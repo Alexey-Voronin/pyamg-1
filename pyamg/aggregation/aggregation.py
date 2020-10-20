@@ -4,6 +4,7 @@ from __future__ import absolute_import
 
 from warnings import warn
 import numpy as np
+import time
 from scipy.sparse import csr_matrix, isspmatrix_csr, isspmatrix_bsr,\
     SparseEfficiencyWarning
 
@@ -25,7 +26,8 @@ from .smooth import jacobi_prolongation_smoother,\
 __all__ = ['smoothed_aggregation_solver']
 
 
-def smoothed_aggregation_solver(A, B=None, BH=None,
+def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=None,
+                                B=None, BH=None, Mass=None,
                                 symmetry='hermitian', strength='symmetric',
                                 aggregate='standard',
                                 smooth=('jacobi', {'omega': 4.0/3.0}),
@@ -53,7 +55,7 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
 
     BH : None, array_like
         Left near-nullspace candidates stored in the columns of an NxK array.
-        BH is only used if symmetry='nonsymmetric'.
+        BH is only used if symmetry is 'nonsymmetric'.
         The default value B=None is equivalent to BH=B.copy()
 
     symmetry : string
@@ -211,18 +213,26 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
        http://citeseer.ist.psu.edu/vanek96algebraic.html
 
     """
+
+    if timing is not None:
+        start = time.time()
+
+
     if not (isspmatrix_csr(A) or isspmatrix_bsr(A)):
         try:
             A = csr_matrix(A)
-            warn("Implicit conversion of A to CSR", SparseEfficiencyWarning)
+            warn("Implicit conversion of A to CSR",
+                 SparseEfficiencyWarning)
         except BaseException:
-            raise TypeError('Argument A must have type csr_matrix or bsr_matrix, or be convertible to csr_matrix')
+            raise TypeError('Argument A must have type csr_matrix or\
+                             bsr_matrix, or be convertible to csr_matrix')
 
     A = A.asfptype()
 
     if (symmetry != 'symmetric') and (symmetry != 'hermitian') and\
             (symmetry != 'nonsymmetric'):
-        raise ValueError('expected \'symmetric\', \'nonsymmetric\' or \'hermitian\' for the symmetry parameter ')
+        raise ValueError('expected \'symmetric\', \'nonsymmetric\' or\
+                         \'hermitian\' for the symmetry parameter ')
     A.symmetry = symmetry
 
     if A.shape[0] != A.shape[1]:
@@ -237,9 +247,11 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
         if len(B.shape) == 1:
             B = B.reshape(-1, 1)
         if B.shape[0] != A.shape[0]:
-            raise ValueError('The near null-space modes B have incorrect dimensions for matrix A')
+            raise ValueError('The near null-space modes B have incorrect \
+                              dimensions for matrix A')
         if B.shape[1] < blocksize(A):
-            warn('Having less target vectors, B.shape[1], than blocksize of A can degrade convergence factors.')
+            warn('Having less target vectors, B.shape[1], than \
+                  blocksize of A can degrade convergence factors.')
 
     # Left near nullspace candidates
     if A.symmetry == 'nonsymmetric':
@@ -250,9 +262,11 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
             if len(BH.shape) == 1:
                 BH = BH.reshape(-1, 1)
             if BH.shape[1] != B.shape[1]:
-                raise ValueError('The number of left and right near null-space modes B and BH, must be equal')
+                raise ValueError('The number of left and right near \
+                                  null-space modes B and BH, must be equal')
             if BH.shape[0] != A.shape[0]:
-                raise ValueError('The near null-space modes BH have incorrect dimensions for matrix A')
+                raise ValueError('The near null-space modes BH have \
+                                  incorrect dimensions for matrix A')
 
     # Levelize the user parameters, so that they become lists describing the
     # desired user option on each level.
@@ -267,17 +281,38 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
     # Construct multilevel structure
     levels = []
     levels.append(multilevel_solver.level())
-    levels[-1].A = A          # matrix
+    levels[-1].A    = A          # matrix
+    levels[-1].Mass = Mass       # mass matrix
 
     # Append near nullspace candidates
     levels[-1].B = B          # right candidates
     if A.symmetry == 'nonsymmetric':
         levels[-1].BH = BH    # left candidates
 
+
+    if timing is not None:
+        stop = time.time()
+        timing['RAP'] += stop-start
+        start = time.time()
+
+    if countOp is not None:
+        if (Ps == None and Rs == None):
+            countOp['Ps'] += 1
+        countOp['RAP'] += 1
+
+
     while len(levels) < max_levels and\
             int(levels[-1].A.shape[0]/blocksize(levels[-1].A)) > max_coarse:
+
+        P = None
+        R = None
+        if (Ps != None and Rs != None) and (len(levels)-1 <= len(Ps)):
+            P = Ps[len(levels)-1]
+            R = Rs[len(levels)-1]
+
         extend_hierarchy(levels, strength, aggregate, smooth,
-                         improve_candidates, diagonal_dominance, keep)
+                         improve_candidates, diagonal_dominance, keep,
+                         P, R, timing)
 
     ml = multilevel_solver(levels, **kwargs)
     change_smoothers(ml, presmoother, postsmoother)
@@ -285,7 +320,7 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
 
 
 def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
-                     diagonal_dominance=False, keep=True):
+                     diagonal_dominance=False, keep=True, P=None, R=None, timing=None):
     """Extend the multigrid hierarchy.
 
     Service routine to implement the strength of connection, aggregation,
@@ -299,36 +334,44 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         else:
             return v, {}
 
-    A = levels[-1].A
-    B = levels[-1].B
+    if timing is not None:
+        start = time.time()
+
+    A    = levels[-1].A
+    Mass = levels[-1].Mass
+    B    = levels[-1].B
     if A.symmetry == "nonsymmetric":
         AH = A.H.asformat(A.format)
         BH = levels[-1].BH
+
+    Agg_Mat = A
+    if Mass is not None:
+        Agg_Mat = Mass
 
     # Compute the strength-of-connection matrix C, where larger
     # C[i,j] denote stronger couplings between i and j.
     fn, kwargs = unpack_arg(strength[len(levels)-1])
     if fn == 'symmetric':
-        C = symmetric_strength_of_connection(A, **kwargs)
+        C = symmetric_strength_of_connection(Agg_Mat, **kwargs)
     elif fn == 'classical':
-        C = classical_strength_of_connection(A, **kwargs)
+        C = classical_strength_of_connection(Agg_Mat, **kwargs)
     elif fn == 'distance':
-        C = distance_strength_of_connection(A, **kwargs)
+        C = distance_strength_of_connection(Agg_Mat, **kwargs)
     elif (fn == 'ode') or (fn == 'evolution'):
         if 'B' in kwargs:
-            C = evolution_strength_of_connection(A, **kwargs)
+            C = evolution_strength_of_connection(Agg_Mat, **kwargs)
         else:
             C = evolution_strength_of_connection(A, B, **kwargs)
     elif fn == 'energy_based':
-        C = energy_based_strength_of_connection(A, **kwargs)
+        C = energy_based_strength_of_connection(Agg_Mat, **kwargs)
     elif fn == 'predefined':
         C = kwargs['C'].tocsr()
     elif fn == 'algebraic_distance':
-        C = algebraic_distance(A, **kwargs)
+        C = algebraic_distance(Agg_Mat, **kwargs)
     elif fn == 'affinity':
-        C = affinity_distance(A, **kwargs)
+        C = affinity_distance(Agg_Mat, **kwargs)
     elif fn is None:
-        C = A.tocsr()
+        C = Agg_Mat.tocsr()
     else:
         raise ValueError('unrecognized strength of connection method: %s' %
                          str(fn))
@@ -336,7 +379,7 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # Avoid coarsening diagonally dominant rows
     flag, kwargs = unpack_arg(diagonal_dominance)
     if flag:
-        C = eliminate_diag_dom_nodes(A, C, **kwargs)
+        C = eliminate_diag_dom_nodes(Agg_Mat, C, **kwargs)
 
     # Compute the aggregation matrix AggOp (i.e., the nodal coarsening of A).
     # AggOp is a boolean matrix, where the sparsity pattern for the k-th column
@@ -418,11 +461,26 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     levels[-1].P = P  # smoothed prolongator
     levels[-1].R = R  # restriction operator
 
+
+    if timing is not None:
+        stop = time.time()
+        timing['Ps'] += stop-start
+        start = time.time()
+
+
     levels.append(multilevel_solver.level())
-    A = R * A * P              # Galerkin operator
+    A    = R * A * P              # Galerkin operator
+    if Mass is not None:
+        Mass = R * Mass * P
     A.symmetry = symmetry
     levels[-1].A = A
+    levels[-1].Mass = Mass
     levels[-1].B = B           # right near nullspace candidates
 
     if A.symmetry == "nonsymmetric":
         levels[-1].BH = BH     # left near nullspace candidates
+
+
+    if timing is not None:
+         stop = time.time()
+         timing['RAP'] += stop-start
