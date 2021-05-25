@@ -28,6 +28,8 @@ __all__ = ['smoothed_aggregation_solver']
 
 def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=None,
                                 B=None, BH=None, Mass=None,
+                                Cpts_suggestion=None,
+                                renumber=0,
                                 symmetry='hermitian', strength='symmetric',
                                 aggregate='standard',
                                 smooth=('jacobi', {'omega': 4.0/3.0}),
@@ -283,6 +285,8 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
     levels.append(multilevel_solver.level())
     levels[-1].A    = A          # matrix
     levels[-1].Mass = Mass       # mass matrix
+    levels[-1].Cpts_suggestion = Cpts_suggestion
+#    print('levels[-1].Cpts_suggestion\n', levels[-1].Cpts_suggestion)
 
     # Append near nullspace candidates
     levels[-1].B = B          # right candidates
@@ -312,7 +316,7 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
 
         extend_hierarchy(levels, strength, aggregate, smooth,
                          improve_candidates, diagonal_dominance, keep,
-                         P, R, timing)
+                         P, R, timing, renumber)
 
     ml = multilevel_solver(levels, **kwargs)
     change_smoothers(ml, presmoother, postsmoother)
@@ -320,7 +324,8 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
 
 
 def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
-                     diagonal_dominance=False, keep=True, P=None, R=None, timing=None):
+                     diagonal_dominance=False, keep=True, P=None, R=None, timing=None,
+                     renumber=0, lloyd_ratio=0.03, lloyd_maxiter=10):
     """Extend the multigrid hierarchy.
 
     Service routine to implement the strength of connection, aggregation,
@@ -386,11 +391,14 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # denotes the fine-grid nodes agglomerated into k-th coarse-grid node.
     fn, kwargs = unpack_arg(aggregate[len(levels)-1])
     if fn == 'standard':
-        AggOp = standard_aggregation(C, **kwargs)[0]
+        Cpts_suggestion = levels[-1].Cpts_suggestion
+ #       print('-->Cpts_suggestion:\n', Cpts_suggestion)
+        AggOp, Cpts = standard_aggregation(C, Cpts_suggestion=Cpts_suggestion,
+                                                   renumber=renumber, **kwargs)
     elif fn == 'naive':
-        AggOp = naive_aggregation(C, **kwargs)[0]
+        AggOp, Cpts = naive_aggregation(C, **kwargs)
     elif fn == 'lloyd':
-        AggOp = lloyd_aggregation(C, **kwargs)[0]
+        AggOp, Cpts = lloyd_aggregation(C, **kwargs)
     elif fn == 'predefined':
         AggOp = kwargs['AggOp'].tocsr()
     else:
@@ -457,6 +465,7 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         levels[-1].C = C  # strength of connection matrix
         levels[-1].AggOp = AggOp  # aggregation operator
         levels[-1].T = T  # tentative prolongator
+        levels[-1].Cpts = Cpts  #  Cpts[i] = root node of aggregate i
 
     levels[-1].P = P  # smoothed prolongator
     levels[-1].R = R  # restriction operator

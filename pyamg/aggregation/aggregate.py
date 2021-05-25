@@ -9,7 +9,7 @@ from pyamg.graph import lloyd_cluster
 __all__ = ['standard_aggregation', 'naive_aggregation', 'lloyd_aggregation', 'balanced_lloyd_aggregation']
 
 
-def standard_aggregation(C):
+def standard_aggregation(C, Cpts_suggestion=None, renumber=0):
     """Compute the sparsity pattern of the tentative prolongator.
 
     Parameters
@@ -70,8 +70,57 @@ def standard_aggregation(C):
 
     fn = amg_core.standard_aggregation
 
+    if Cpts_suggestion is not None or renumber:
+        if Cpts_suggestion is not None:
+            # default order of DoFs
+            id_default   = np.arange(C.shape[0])
+            # DoFs missing from default ordered (complement set to Cpts_suggestion)
+            id_comp      = np.setdiff1d(id_default, Cpts_suggestion)
+            # put the suggested DoFs first
+            id_new_order = np.concatenate((Cpts_suggestion, id_comp))
+            #print('standard: len(Cpts_suggestion)=', len(Cpts_suggestion))
+            #print('id_new_order:\n', id_new_order)
+
+        elif renumber: #random ordering
+            id_new_order = np.arange(C.shape[0])
+            np.random.seed(renumber)
+            np.random.shuffle(id_new_order)
+
+            """
+            row = []; col = []
+            map_back = dict()
+            # create map node i --> j
+            for i, j in enumerate(id_new_order):
+                row.append(i)
+                col.append(j)
+                map_back[j] = i
+            """
+        row = []; col = []
+        map_back = dict()
+        # create map node i --> j
+        #print(len(id_new_order))
+        #print(max(id_new_order))
+        for i, j in enumerate(id_new_order):
+            row.append(j)
+            col.append(i)
+            map_back[i] = j
+
+        row = np.array(row)
+        col = np.array(col)
+        #print(max(row), max(col), C.shape)
+        #print(len(row), len(col))
+        Permute = sparse.coo_matrix((np.ones(len(row)), (row, col)), shape=C.shape).tocsr()
+        C = Permute.T*C*Permute
+
     num_aggregates = fn(num_rows, C.indptr, C.indices, Tj, Cpts)
     Cpts = Cpts[:num_aggregates]
+
+    if Cpts_suggestion is not None or renumber:
+        # map data back
+        for i in range(len(Cpts)):
+            Cpts[i] = map_back[Cpts[i]]
+        Tj = Permute*Tj
+        C = Permute*C*Permute.T
 
     if num_aggregates == 0:
         # return all zero matrix and no Cpts
