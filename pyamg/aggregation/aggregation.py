@@ -489,6 +489,7 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     if A.symmetry == "nonsymmetric":
         levels[-1].BH = BH     # left near nullspace candidates
 
+    levels[-1].Cpts_suggestion = None
 
     if timing is not None:
          stop = time.time()
