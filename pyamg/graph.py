@@ -212,7 +212,16 @@ def lloyd_cluster(G, seeds, maxiter=10):
 
     # interpret seeds argument
     if np.isscalar(seeds):
-        seeds = np.random.permutation(N)[:seeds]
+        #singletons = []
+        #for i in range(N):
+        #    if len(G.getrow(i).indices) == 1:
+        #        singletons.append(i)
+
+        #nodes = np.setdiff1d(np.arange(N), singletons)
+        indptr = G.indptr
+        nodes = np.where(indptr[1:]-indptr[:-1] > 1)[0]
+        seeds = np.random.permutation(nodes)[:seeds]
+        #seeds = np.random.permutation(N)[:seeds]
         seeds = seeds.astype('intc')
     else:
         seeds = np.array(seeds, dtype='intc')
