@@ -9,7 +9,7 @@ from pyamg.graph import lloyd_cluster
 __all__ = ['standard_aggregation', 'naive_aggregation', 'lloyd_aggregation', 'balanced_lloyd_aggregation']
 
 
-def standard_aggregation(C, Cpts_suggestion=None, renumber=0):
+def standard_aggregation(C, Cpts_suggestion=None, renumber=0, modify=False):
     """Compute the sparsity pattern of the tentative prolongator.
 
     Parameters
@@ -81,8 +81,10 @@ def standard_aggregation(C, Cpts_suggestion=None, renumber=0):
         map_back_rand = dict()
         map_forward_rand = dict()
         for i, j in enumerate(id_new_order):
-            row.append(j)
-            col.append(i)
+            #row.append(j)
+            #col.append(i)
+            row.append(i)
+            col.append(j)
             map_back_rand[i]    = j
             map_forward_rand[j] = i
 
@@ -90,7 +92,6 @@ def standard_aggregation(C, Cpts_suggestion=None, renumber=0):
         col          = np.array(col)
         Permute_rand = sparse.coo_matrix((np.ones(len(row)), (row, col)), shape=C.shape).tocsr()
         C            = Permute_rand.T*C*Permute_rand
-
 
     Permute_Cpts  = None
     map_back_Cpts = None
@@ -117,21 +118,26 @@ def standard_aggregation(C, Cpts_suggestion=None, renumber=0):
         Permute_Cpts = sparse.coo_matrix((np.ones(len(row)), (row, col)), shape=C.shape).tocsr()
         C            = Permute_Cpts.T*C*Permute_Cpts
 
-    fn = amg_core.standard_aggregation
-    num_aggregates = fn(num_rows, C.indptr, C.indices, Tj, Cpts)
+    if not modify:
+        fn = amg_core.standard_aggregation
+        num_aggregates = fn(num_rows, C.indptr, C.indices, Tj, Cpts)
+    else:
+        from pyamg.amg_core.standard_agg_alexey import standard_aggregation_py
+        fn = standard_aggregation_py
+        num_aggregates,  Tj, Cpts = fn(num_rows, C.indptr, C.indices, Tj, Cpts, modify=True)
     Cpts = Cpts[:num_aggregates]
 
     if Cpts_suggestion is not None: # map data back
         for i in range(len(Cpts)):
             Cpts[i] = map_back_Cpts[Cpts[i]]
         Tj = Permute_Cpts*Tj
-        C = Permute_Cpts*C*Permute_Cpts.T
+        C  = Permute_Cpts*C*Permute_Cpts.T
 
     if renumber: # map data back
         for i in range(len(Cpts)):
             Cpts[i] = map_back_rand[Cpts[i]]
         Tj = Permute_rand*Tj
-        C = Permute_rand*C*Permute_rand.T
+        C  = Permute_rand*C*Permute_rand.T
 
     if num_aggregates == 0:
         # return all zero matrix and no Cpts

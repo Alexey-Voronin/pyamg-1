@@ -393,6 +393,9 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     if fn == 'standard':
         Cpts_suggestion = levels[-1].Cpts_suggestion
  #       print('-->Cpts_suggestion:\n', Cpts_suggestion)
+
+        # don't do random stuff on coarse grid
+        #renumber = 0 if len(levels) > 1 else renumber
         AggOp, Cpts = standard_aggregation(C, Cpts_suggestion=Cpts_suggestion,
                                                    renumber=renumber, **kwargs)
     elif fn == 'naive':
