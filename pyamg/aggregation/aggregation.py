@@ -318,6 +318,9 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
                          improve_candidates, diagonal_dominance, keep,
                          P, R, timing, renumber)
 
+    if levels[-1].A.shape[0] < max_coarse:
+        levels = levels[:-1]
+
     ml = multilevel_solver(levels, **kwargs)
     change_smoothers(ml, presmoother, postsmoother)
     return ml
