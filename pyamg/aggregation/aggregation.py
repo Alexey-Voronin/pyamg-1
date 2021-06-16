@@ -7,6 +7,7 @@ import numpy as np
 import time
 from scipy.sparse import csr_matrix, isspmatrix_csr, isspmatrix_bsr,\
     SparseEfficiencyWarning
+import scipy.sparse as sp
 
 from pyamg.multilevel import multilevel_solver
 from pyamg.relaxation.smoothing import change_smoothers
@@ -285,7 +286,10 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
     levels.append(multilevel_solver.level())
     levels[-1].A    = A          # matrix
     levels[-1].Mass = Mass       # mass matrix
-    levels[-1].Cpts_suggestion = Cpts_suggestion
+    if Cpts_suggestion is not None:
+        levels[-1].Bdiv            = Cpts_suggestion[1]
+        ml_p                       = Cpts_suggestion[0]
+
 #    print('levels[-1].Cpts_suggestion\n', levels[-1].Cpts_suggestion)
 
     # Append near nullspace candidates
@@ -307,16 +311,51 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
 
     while len(levels) < max_levels and\
             int(levels[-1].A.shape[0]/blocksize(levels[-1].A)) > max_coarse:
-
         P = None
         R = None
         if (Ps != None and Rs != None) and (len(levels)-1 <= len(Ps)):
             P = Ps[len(levels)-1]
             R = Rs[len(levels)-1]
 
+        if Cpts_suggestion is not None:
+            # if not enough pressure Cpoints, stop
+            if len(levels) >= len(ml_p.levels):
+                break
+
+            if type(levels[-1].Bdiv) == sp.csc_matrix:
+                levels[-1].Bdiv = levels[-1].Bdiv.tocsr()
+            p_Cpts      = ml_p.levels[len(levels)-1].Cpts
+            vx_Cpts_tent= []
+            for pc in p_Cpts:
+                # x-component
+                # find connected v_dofs
+                pc_row = levels[-1].Bdiv.getrow(pc)
+                v_id   = pc_row.indices
+                vals   = pc_row.data
+                # split values and ids component wise
+                #x_comp   = np.where(v_id < nvx)
+                v_id_x   = v_id #[x_comp]
+                vals_x   = np.abs(vals) #[x_comp])
+                # find strongest connected v_dof
+                idx    = np.argsort(vals_x)
+                vals_x = vals_x[idx]
+                v_id_x = v_id_x[idx]
+                vx_Cpts_tent.append(v_id_x[-1])
+
+            levels[-1].Cpts_suggestion = vx_Cpts_tent
+        else:
+             levels[-1].Cpts_suggestion = None
+
         extend_hierarchy(levels, strength, aggregate, smooth,
                          improve_candidates, diagonal_dominance, keep,
                          P, R, timing, renumber)
+
+        if Cpts_suggestion is not None:
+            if hasattr(ml_p.levels[len(levels)-2], 'R'):
+                if hasattr(levels[-2], 'P'):
+                    levels[-1].Bdiv = ml_p.levels[len(levels)-2].R*levels[-2].Bdiv*levels[-2].P
+            else: # not enough coarse pressure levels to continue
+                break
 
     if levels[-1].A.shape[0] < max_coarse:
         levels = levels[:-1]
