@@ -248,7 +248,7 @@ def naive_aggregation(C):
         return sparse.csr_matrix((Tx, Tj, Tp), shape=shape), Cpts
 
 
-def lloyd_aggregation(C, ratio=0.03, distance='unit', maxiter=10):
+def lloyd_aggregation(C, ratio=0.03, distance='unit', maxiter=10, nCpts_suggestion=None, Cpts_suggestion=None):
     """Aggregate nodes using Lloyd Clustering.
 
     Parameters
@@ -331,10 +331,15 @@ def lloyd_aggregation(C, ratio=0.03, distance='unit', maxiter=10):
 
     G = C.__class__((data, C.indices, C.indptr), shape=C.shape)
 
-    num_seeds = int(min(max(ratio * G.shape[0], 1), G.shape[0]))
+    if nCpts_suggestion is not None:
+        num_seeds = nCpts_suggestion
+    else:
+        num_seeds = int(min(max(ratio * G.shape[0], 1), G.shape[0]))
 
-    distances, clusters, seeds = lloyd_cluster(G, num_seeds, maxiter=maxiter)
+    distances, clusters, seeds = lloyd_cluster(G, num_seeds, maxiter=maxiter,
+                                               Cpts_suggestion=Cpts_suggestion)
 
+    #print(num_seeds, len(seeds))
     row = (clusters >= 0).nonzero()[0]
     col = clusters[row]
     data = np.ones(len(row), dtype='int8')

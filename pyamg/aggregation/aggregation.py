@@ -342,9 +342,12 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
                 v_id_x = v_id_x[idx]
                 vx_Cpts_tent.append(v_id_x[-1])
 
-            levels[-1].Cpts_suggestion = vx_Cpts_tent
+            levels[-1].Cpts_suggestion  = vx_Cpts_tent
+            #levels[-1].nCpts_suggestion = ml_p.levels[len(levels)-2].A.shape
+            levels[-1].nCpts_suggestion = int(4*len(vx_Cpts_tent))
         else:
-             levels[-1].Cpts_suggestion = None
+            levels[-1].Cpts_suggestion  = None
+            levels[-1].nCpts_suggestion = None
 
         extend_hierarchy(levels, strength, aggregate, smooth,
                          improve_candidates, diagonal_dominance, keep,
@@ -367,7 +370,7 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
 
 def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
                      diagonal_dominance=False, keep=True, P=None, R=None, timing=None,
-                     renumber=0, lloyd_ratio=0.03, lloyd_maxiter=10):
+                     renumber=0, lloyd_ratio=0.03, lloyd_maxiter=50):
     """Extend the multigrid hierarchy.
 
     Service routine to implement the strength of connection, aggregation,
@@ -432,6 +435,7 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # AggOp is a boolean matrix, where the sparsity pattern for the k-th column
     # denotes the fine-grid nodes agglomerated into k-th coarse-grid node.
     fn, kwargs = unpack_arg(aggregate[len(levels)-1])
+    Cpts = None
     if fn == 'standard':
         Cpts_suggestion = levels[-1].Cpts_suggestion
  #       print('-->Cpts_suggestion:\n', Cpts_suggestion)
@@ -443,7 +447,10 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     elif fn == 'naive':
         AggOp, Cpts = naive_aggregation(C, **kwargs)
     elif fn == 'lloyd':
-        AggOp, Cpts = lloyd_aggregation(C, **kwargs)
+        Cpts_suggestion = levels[-1].Cpts_suggestion
+        nCpts_suggestion= levels[-1].nCpts_suggestion
+        AggOp, Cpts = lloyd_aggregation(C, nCpts_suggestion=nCpts_suggestion,
+                                            Cpts_suggestion=Cpts_suggestion, **kwargs)
     elif fn == 'predefined':
         AggOp = kwargs['AggOp'].tocsr()
     else:

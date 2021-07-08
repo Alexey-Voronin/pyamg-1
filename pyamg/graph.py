@@ -174,7 +174,7 @@ def bellman_ford(G, seeds, maxiter=None):
     return (distances, nearest_seed)
 
 
-def lloyd_cluster(G, seeds, maxiter=10):
+def lloyd_cluster(G, seeds, maxiter=10, Cpts_suggestion=None):
     """Perform Lloyd clustering on graph with weighted edges.
 
     Parameters
@@ -205,13 +205,28 @@ def lloyd_cluster(G, seeds, maxiter=10):
     """
     G = asgraph(G)
     N = G.shape[0]
-
     if G.dtype.kind == 'c':
         # complex dtype
         G = np.abs(G)
 
     # interpret seeds argument
-    if np.isscalar(seeds):
+    if Cpts_suggestion is not None:
+        #print('N=', N)
+        #print('seeds=', seeds)
+        #print('len(Cpts_suggestion)=', len(Cpts_suggestion))
+
+        remaining_nodes = np.setdiff1d(np.arange(N), Cpts_suggestion)
+        add_seeds       = np.random.permutation(remaining_nodes)[:(seeds-len(Cpts_suggestion))]
+        seeds           = np.array(Cpts_suggestion + list(add_seeds), dtype='intc')
+        """
+        indptr = G.indptr
+        nodes = np.where(indptr[1:]-indptr[:-1] > 1)[0]
+        seeds = np.random.permutation(nodes)[:seeds]
+        seeds = seeds.astype('intc')
+        """
+        #print('lloyd seeds: ', len(seeds))
+        #print(seeds)
+    elif np.isscalar(seeds):
         #singletons = []
         #for i in range(N):
         #    if len(G.getrow(i).indices) == 1:
@@ -225,6 +240,8 @@ def lloyd_cluster(G, seeds, maxiter=10):
         seeds = seeds.astype('intc')
     else:
         seeds = np.array(seeds, dtype='intc')
+
+    seeds = np.sort(seeds)
 
     if len(seeds) < 1:
         raise ValueError('at least one seed is required')
