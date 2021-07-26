@@ -152,11 +152,31 @@ def jacobi_prolongation_smoother(S, T, C, B, omega=4.0/3.0, degree=1,
         S = S.multiply(C)
         S.eliminate_zeros()
 
-    if weighting == 'diagonal':
+    lambda_max = -1
+    if weighting == 'l1':
+        D             = sparse.linalg.norm(S, ord=1, axis=0)
+        D_inv         = np.zeros_like(D)
+        D_inv[D != 0] = 1.0 / np.abs(D[D != 0])
+
+        D_inv_S    = scale_rows(S, D_inv, copy=True)
+        lambda_max = approximate_spectral_radius(D_inv_S)
+        D_inv_S    = (omega/lambda_max)*D_inv_S
+    elif weighting == 'diagonal':
         # Use diagonal of S
         D_inv = get_diagonal(S, inv=True)
         D_inv_S = scale_rows(S, D_inv, copy=True)
-        D_inv_S = (omega/approximate_spectral_radius(D_inv_S))*D_inv_S
+
+        """
+        if D_inv_S.shape[0] < 5000:
+            lambda_max=np.max(np.abs(np.linalg.eigvals(D_inv_S.toarray())))
+        else:
+            lambda_max=approximate_spectral_radius(D_inv_S, tol=1e-5, maxiter=50, restart=20,
+                                 symmetric=True, initial_guess=None,
+                                 return_vector=False)
+        """
+
+        lambda_max=approximate_spectral_radius(D_inv_S)
+        D_inv_S = (omega/lambda_max)*D_inv_S
     elif weighting == 'block':
         # Use block diagonal of S
         D_inv = get_block_diag(S, blocksize=S.blocksize[0], inv_flag=True)
@@ -164,15 +184,16 @@ def jacobi_prolongation_smoother(S, T, C, B, omega=4.0/3.0, degree=1,
                                    np.arange(D_inv.shape[0]+1)),
                                   shape=S.shape)
         D_inv_S = D_inv*S
-        D_inv_S = (omega/approximate_spectral_radius(D_inv_S))*D_inv_S
+        lambda_max=approximate_spectral_radius(D_inv_S)
+        D_inv_S = (omega/lambda_max)*D_inv_S
     elif weighting == 'local':
         # Use the Gershgorin estimate as each row's weight, instead of a global
         # spectral radius estimate
         D = np.abs(S)*np.ones((S.shape[0], 1), dtype=S.dtype)
         D_inv = np.zeros_like(D)
         D_inv[D != 0] = 1.0 / np.abs(D[D != 0])
-
         D_inv_S = scale_rows(S, D_inv, copy=True)
+        lambda_max = D_inv
         D_inv_S = omega*D_inv_S
     else:
         raise ValueError('Incorrect weighting option')
@@ -200,7 +221,7 @@ def jacobi_prolongation_smoother(S, T, C, B, omega=4.0/3.0, degree=1,
         for i in range(degree):
             P = P - (D_inv_S*P)
 
-    return P
+    return P, np.max(lambda_max)
 
 
 def richardson_prolongation_smoother(S, T, omega=4.0/3.0, degree=1):

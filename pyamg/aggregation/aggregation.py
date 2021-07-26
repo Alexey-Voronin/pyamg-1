@@ -477,7 +477,8 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # improved for algebraically smooth error.
     fn, kwargs = unpack_arg(smooth[len(levels)-1])
     if fn == 'jacobi':
-        P = jacobi_prolongation_smoother(A, T, C, B, **kwargs)
+        P, lambda_max = jacobi_prolongation_smoother(A, T, C, B, **kwargs)
+        levels[-1].smooth_lambda_max = lambda_max
     elif fn == 'richardson':
         P = richardson_prolongation_smoother(A, T, **kwargs)
     elif fn == 'energy':
