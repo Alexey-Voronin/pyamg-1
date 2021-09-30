@@ -70,7 +70,7 @@ class multilevel_solver:
             """Level construct (empty)."""
             pass
 
-    def __init__(self, levels, coarse_solver='pinv2'):
+    def __init__(self, levels, coarse_solver='pinv2', skip_cgc=False):
         """Class constructor responsible for initializing the cycle and ensuring the list of levels is complete.
 
         Parameters
@@ -150,10 +150,14 @@ class multilevel_solver:
         self.levels = levels
 
         self.coarse_solver = coarse_grid_solver(coarse_solver)
+        self.skip_cgc      = skip_cgc
 
         for level in levels[:-1]:
             if not hasattr(level, 'R'):
                 level.R = level.P.H
+
+        for level in levels:
+            level.x_tmp = np.zeros((level.A.shape[0],))
 
     def __repr__(self):
         """Print basic statistics about the multigrid hierarchy."""
@@ -324,8 +328,10 @@ class multilevel_solver:
 
         return LinearOperator(shape, matvec, dtype=dtype)
 
+    #@profile
     def solve(self, b, x0=None, tol=1e-5, maxiter=100, cycle='V', accel=None,
-              callback=None, residuals=None, return_residuals=False):
+              callback=None, residuals=None, return_residuals=False,
+              compute_resid=False):
         """Execute multigrid cycling.
 
         Parameters
@@ -376,7 +382,8 @@ class multilevel_solver:
         from pyamg.util.linalg import residual_norm, norm
 
         if x0 is None:
-            x = np.zeros_like(b)
+            x = self.levels[0].x_tmp #np.zeros_like(b)
+            x *=0
         else:
             x = np.array(x0)  # copy
 
@@ -462,16 +469,21 @@ class multilevel_solver:
 
         # Create uniform types for A, x and b
         # Clearly, this logic doesn't handle the case of real A and complex b
+        """
         from scipy.sparse.sputils import upcast
         from pyamg.util.utils import to_type
         tp = upcast(b.dtype, x.dtype, self.levels[0].A.dtype)
         [b, x] = to_type(tp, [b, x])
         b = np.ravel(b)
         x = np.ravel(x)
+        """
 
         A = self.levels[0].A
 
-        residuals.append(residual_norm(A, x, b))
+        if compute_resid:
+            residuals.append(residual_norm(A, x, b))
+        else:
+            residuals.append(1)
 
         self.first_pass = True
 
@@ -482,7 +494,10 @@ class multilevel_solver:
             else:
                 self.__solve(0, x, b, cycle)
 
-            residuals.append(residual_norm(A, x, b))
+            if compute_resid:
+                residuals.append(residual_norm(A, x, b))
+            else:
+                residuals.append(1)
 
             self.first_pass = False
 
@@ -494,6 +509,7 @@ class multilevel_solver:
         else:
             return x
 
+    #@profile
     def __solve(self, lvl, x, b, cycle):
         """Multigrid cycling.
 
@@ -519,57 +535,57 @@ class multilevel_solver:
         self.levels[lvl].presmoother(A, x, b)
 
         residual = b - A * x
+        if not self.skip_cgc:
+            coarse_b = self.levels[lvl].R * residual
+            coarse_x = self.levels[lvl+1].x_tmp #np.zeros_like(coarse_b)
+            coarse_x*=0
 
-        coarse_b = self.levels[lvl].R * residual
-        coarse_x = np.zeros_like(coarse_b)
-
-        if lvl == len(self.levels) - 2:
-            coarse_x[:] = self.coarse_solver(self.levels[-1].A, coarse_b)
-        else:
-            if cycle == 'V':
-                self.__solve(lvl + 1, coarse_x, coarse_b, 'V')
-            elif cycle == 'W':
-                self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
-                self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
-            elif cycle == 'F':
-                self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
-                self.__solve(lvl + 1, coarse_x, coarse_b, 'V')
-            elif cycle == "AMLI":
-                # Run nAMLI AMLI cycles, which compute "optimal" corrections by
-                # orthogonalizing the coarse-grid corrections in the A-norm
-                nAMLI = 2
-                Ac = self.levels[lvl + 1].A
-                p = np.zeros((nAMLI, coarse_b.shape[0]), dtype=coarse_b.dtype)
-                beta = np.zeros((nAMLI, nAMLI), dtype=coarse_b.dtype)
-                for k in range(nAMLI):
-                    # New search direction --> M^{-1}*residual
-                    p[k, :] = 1
-                    self.__solve(lvl + 1, p[k, :].reshape(coarse_b.shape),
-                                 coarse_b, cycle)
-
-                    # Orthogonalize new search direction to old directions
-                    for j in range(k):  # loops from j = 0...(k-1)
-                        beta[k, j] = np.inner(p[j, :].conj(), Ac * p[k, :]) /\
-                            np.inner(p[j, :].conj(), Ac * p[j, :])
-                        p[k, :] -= beta[k, j] * p[j, :]
-
-                    # Compute step size
-                    Ap = Ac * p[k, :]
-                    alpha = np.inner(p[k, :].conj(), np.ravel(coarse_b)) /\
-                        np.inner(p[k, :].conj(), Ap)
-
-                    # Update solution
-                    coarse_x += alpha * p[k, :].reshape(coarse_x.shape)
-
-                    # Update residual
-                    coarse_b -= alpha * Ap.reshape(coarse_b.shape)
+            if lvl == len(self.levels) - 2:
+                coarse_x[:] = self.coarse_solver(self.levels[-1].A, coarse_b)
             else:
-                raise TypeError('Unrecognized cycle type (%s)' % cycle)
+                if cycle == 'V':
+                    self.__solve(lvl + 1, coarse_x, coarse_b, 'V')
+                elif cycle == 'W':
+                    self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
+                    self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
+                elif cycle == 'F':
+                    self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
+                    self.__solve(lvl + 1, coarse_x, coarse_b, 'V')
+                elif cycle == "AMLI":
+                    # Run nAMLI AMLI cycles, which compute "optimal" corrections by
+                    # orthogonalizing the coarse-grid corrections in the A-norm
+                    nAMLI = 2
+                    Ac = self.levels[lvl + 1].A
+                    p = np.zeros((nAMLI, coarse_b.shape[0]), dtype=coarse_b.dtype)
+                    beta = np.zeros((nAMLI, nAMLI), dtype=coarse_b.dtype)
+                    for k in range(nAMLI):
+                        # New search direction --> M^{-1}*residual
+                        p[k, :] = 1
+                        self.__solve(lvl + 1, p[k, :].reshape(coarse_b.shape),
+                                     coarse_b, cycle)
 
-        x += self.levels[lvl].P * coarse_x   # coarse grid correction
+                        # Orthogonalize new search direction to old directions
+                        for j in range(k):  # loops from j = 0...(k-1)
+                            beta[k, j] = np.inner(p[j, :].conj(), Ac * p[k, :]) /\
+                                np.inner(p[j, :].conj(), Ac * p[j, :])
+                            p[k, :] -= beta[k, j] * p[j, :]
+
+                        # Compute step size
+                        Ap = Ac * p[k, :]
+                        alpha = np.inner(p[k, :].conj(), np.ravel(coarse_b)) /\
+                            np.inner(p[k, :].conj(), Ap)
+
+                        # Update solution
+                        coarse_x += alpha * p[k, :].reshape(coarse_x.shape)
+
+                        # Update residual
+                        coarse_b -= alpha * Ap.reshape(coarse_b.shape)
+                else:
+                    raise TypeError('Unrecognized cycle type (%s)' % cycle)
+
+            x += self.levels[lvl].P * coarse_x   # coarse grid correction
 
         self.levels[lvl].postsmoother(A, x, b)
-
 
 def coarse_grid_solver(solver):
     """Return a coarse grid solver suitable for multilevel_solver.

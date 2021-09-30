@@ -365,6 +365,8 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
 
     ml = multilevel_solver(levels, **kwargs)
     change_smoothers(ml, presmoother, postsmoother)
+    tmp = ml.levels[-1].coarse_solver(ml.levels[-1].A.toarray(), np.ones((ml.levels[-1].A.shape[0],)))
+
     return ml
 
 
