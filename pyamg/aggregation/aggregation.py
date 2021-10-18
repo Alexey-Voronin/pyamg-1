@@ -44,7 +44,8 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
                                                     None],
                                 max_levels=10, max_coarse=10,
                                 diagonal_dominance=False,
-                                keep=False, **kwargs):
+                                keep=False,
+                                **kwargs):
     """Create a multilevel solver using classical-style Smoothed Aggregation (SA).
 
     Parameters
@@ -308,7 +309,6 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
             countOp['Ps'] += 1
         countOp['RAP'] += 1
 
-
     while len(levels) < max_levels and\
             int(levels[-1].A.shape[0]/blocksize(levels[-1].A)) > max_coarse:
         P = None
@@ -351,7 +351,7 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
 
         extend_hierarchy(levels, strength, aggregate, smooth,
                          improve_candidates, diagonal_dominance, keep,
-                         P, R, timing, renumber)
+                         P, R, timing, renumber, **kwargs)
 
         if Cpts_suggestion is not None:
             if hasattr(ml_p.levels[len(levels)-2], 'R'):
@@ -373,7 +373,7 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
 
 def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
                      diagonal_dominance=False, keep=True, P=None, R=None, timing=None,
-                     renumber=0, lloyd_ratio=0.03, lloyd_maxiter=50):
+                     renumber=0, lloyd_ratio=0.03, lloyd_maxiter=50, **kwargs):
     """Extend the multigrid hierarchy.
 
     Service routine to implement the strength of connection, aggregation,
@@ -389,7 +389,6 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
 
     if timing is not None:
         start = time.time()
-
     A    = levels[-1].A
     Mass = levels[-1].Mass
     B    = levels[-1].B
@@ -409,7 +408,9 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     elif fn == 'classical':
         C = classical_strength_of_connection(Agg_Mat, **kwargs)
     elif fn == 'distance':
-        C = distance_strength_of_connection(Agg_Mat, **kwargs)
+        if len(levels) == 1:
+            levels[-1].V = kwargs.pop('V')
+        C = distance_strength_of_connection(Agg_Mat, V=levels[-1].V, **kwargs)
     elif (fn == 'ode') or (fn == 'evolution'):
         if 'B' in kwargs:
             C = evolution_strength_of_connection(Agg_Mat, **kwargs)
@@ -532,6 +533,20 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         timing['Ps'] += stop-start
         start = time.time()
 
+    # Coarse-grid DoF location
+    fn, kwargs = unpack_arg(strength[len(levels)-1])
+    Vc = None
+    if fn == 'distance':
+        AggOpT  = levels[-1].AggOp.T.tocsr()
+        indices = AggOpT.indices
+        indptr  = AggOpT.indptr
+
+        V       = levels[-1].V
+        Vc      = np.zeros((AggOpT.shape[0], V.shape[1]))
+        for n in range(AggOpT.shape[0]):
+            start, end = indptr[n], indptr[n+1]
+            idx        = indices[start:end]
+            Vc[n,:]    = np.mean(V[idx,:], axis=0)
 
     levels.append(multilevel_solver.level())
     A    = R * A * P              # Galerkin operator
@@ -541,6 +556,7 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     levels[-1].A = A
     levels[-1].Mass = Mass
     levels[-1].B = B           # right near nullspace candidates
+    levels[-1].V = Vc
 
     if A.symmetry == "nonsymmetric":
         levels[-1].BH = BH     # left near nullspace candidates

@@ -29,7 +29,7 @@ __all__ = ['classical_strength_of_connection',
            'ode_strength_of_connection']
 
 
-def distance_strength_of_connection(A, V, theta=2.0, relative_drop=True):
+def distance_strength_of_connection(A, V=None, theta=2.0, relative_drop=False):
     """Distance based strength-of-connection.
 
     Parameters
