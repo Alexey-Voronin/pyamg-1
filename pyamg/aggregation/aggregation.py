@@ -367,6 +367,8 @@ def smoothed_aggregation_solver(A, Ps = None, Rs=None, timing = None, countOp=No
     change_smoothers(ml, presmoother, postsmoother)
     if getattr(ml.levels[-1], "coarse_solver", False):
         tmp = ml.levels[-1].coarse_solver(ml.levels[-1].A.toarray(), np.ones((ml.levels[-1].A.shape[0],)))
+    #if levels[0].V is not None:
+    #    kwargs['V'] = levels[0].V
 
     return ml
 
@@ -409,8 +411,9 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         C = classical_strength_of_connection(Agg_Mat, **kwargs)
     elif fn == 'distance':
         if len(levels) == 1:
-            levels[-1].V = kwargs.pop('V')
-        C = distance_strength_of_connection(Agg_Mat, V=levels[-1].V, **kwargs)
+            levels[-1].V = kwargs['V']
+        kwargs_tmp = {'theta' :  kwargs['theta'], 'relative_drop' : kwargs['relative_drop']}
+        C = distance_strength_of_connection(Agg_Mat, V=levels[-1].V, **kwargs_tmp)
     elif (fn == 'ode') or (fn == 'evolution'):
         if 'B' in kwargs:
             C = evolution_strength_of_connection(Agg_Mat, **kwargs)
