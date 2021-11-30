@@ -36,7 +36,7 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
                                                      {'sweep': 'symmetric',
                                                       'iterations': 4}),
                                                     None],
-                                max_levels=10, max_coarse=10,
+                                max_levels=10, max_coarse=10, min_coarse=10,
                                 diagonal_dominance=False,
                                 keep=False, **kwargs):
     """Create a multilevel solver using classical-style Smoothed Aggregation (SA).
@@ -277,6 +277,10 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
             int(levels[-1].A.shape[0]/blocksize(levels[-1].A)) > max_coarse:
         extend_hierarchy(levels, strength, aggregate, smooth,
                          improve_candidates, diagonal_dominance, keep)
+
+    # dicard the coarsest level if smaller than min_coarse
+    if min_coarse > levels[-1].A.shape[0]:
+        levels = levels[:-1]
 
     ml = multilevel_solver(levels, **kwargs)
     change_smoothers(ml, presmoother, postsmoother)
