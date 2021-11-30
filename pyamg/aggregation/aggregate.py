@@ -127,7 +127,9 @@ def standard_aggregation(C, Cpts_suggestion=None, renumber=0, modify=None):
     else:
         from pyamg.amg_core.standard_agg_alexey import standard_aggregation_py
         fn = standard_aggregation_py
-        num_aggregates,  Tj, Cpts = fn(num_rows, C.indptr, C.indices, Tj, Cpts, modify=modify)
+        num_aggregates,  Tj, Cpts, agg1, agg2 = fn(num_rows, C.indptr, C.indices, Tj, Cpts, modify=modify)
+        #print('total=%d\tagg_phase1=%d\tagg_phase2=%d' % (num_aggregates, agg1, agg2))
+        print('pass1 %% agg = %.2f\tpass2 %% agg =%.2f'  % (100*agg1/num_rows, 100*agg2/num_rows))
     Cpts = Cpts[:num_aggregates]
 
     if Cpts_suggestion is not None: # map data back

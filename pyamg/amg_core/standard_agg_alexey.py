@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 
 def standard_aggregation_py(n_row, Ap, Aj, x, y, coord=None, modify={'phase-1a': 0.0, 'phase-2': False}):
 
-
     x[:n_row]      = 0
     next_aggregate = 1; # number of aggregates + 1
     aggs_dict      = np.zeros((n_row,))
@@ -43,6 +42,8 @@ def standard_aggregation_py(n_row, Ap, Aj, x, y, coord=None, modify={'phase-1a':
                     x[Aj[jj]] = next_aggregate;
                     aggs_dict[next_aggregate] += 1
             next_aggregate+=1;
+
+    pass1_naggs = len(x[:n_row][np.where(x >0 )])
 
     # Pass 2: Add unaggregated nodes to any neighboring aggregate
     if not modify['phase-2']:
@@ -90,6 +91,8 @@ def standard_aggregation_py(n_row, Ap, Aj, x, y, coord=None, modify={'phase-1a':
 
     next_aggregate-= 1;
 
+    pass2_naggs = len(x[:n_row][np.where(x >=0 )])+len(x[:n_row][np.where(x < 0 )])
+
 
     # Pass 3
     for i in range(n_row):
@@ -127,6 +130,6 @@ def standard_aggregation_py(n_row, Ap, Aj, x, y, coord=None, modify={'phase-1a':
     std = np.std(agg_sizes)
     #print('ave_agg_size %.2f +/- %.2f' % (np.mean(agg_sizes), std))
 
-    return next_aggregate, x, y;
+    return next_aggregate, x, y, pass1_naggs, pass2_naggs;
 
 
