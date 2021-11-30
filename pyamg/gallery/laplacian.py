@@ -1,5 +1,4 @@
 """Discretizations of the Poisson problem."""
-from __future__ import absolute_import
 
 import numpy as np
 import scipy as sp
@@ -9,7 +8,7 @@ from .stencil import stencil_grid
 __all__ = ['poisson', 'gauge_laplacian']
 
 
-def poisson(grid, spacing=None, dtype=float, format=None, type='FD'):
+def poisson(grid, dtype=float, format=None, type='FD'):
     """Return a sparse matrix for the N-dimensional Poisson problem.
 
     The matrix represents a finite Difference approximation to the

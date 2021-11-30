@@ -8,7 +8,6 @@ Requirements for the strength matrix C are:
        row block size of m, then C is (n/m) x (n/m)
 
 """
-from __future__ import print_function
 
 
 from warnings import warn
@@ -122,8 +121,8 @@ def classical_strength_of_connection(A, theta=0.0, norm='abs'):
     Return a strength of connection matrix using the classical AMG measure
     An off-diagonal entry A[i,j] is a strong connection iff::
 
-             A[i,j] >= theta * max(|A[i,k]|), where k != i     (norm='abs')
-            -A[i,j] >= theta * max(-A[i,k]),  where k != i     (norm='min')
+             |A[i,j]| >= theta * max(|A[i,k]|), where k != i     (norm='abs')
+             -A[i,j]  >= theta * max(-A[i,k]),  where k != i     (norm='min')
 
     Parameters
     ----------
@@ -534,6 +533,7 @@ def evolution_strength_of_connection(A, B=None, epsilon=4.0, k=2,
     # local imports for evolution_strength_of_connection
     from pyamg.util.utils import scale_rows, get_block_diag, scale_columns
     from pyamg.util.linalg import approximate_spectral_radius
+    from pyamg.util.utils import set_tol
 
     # ====================================================================
     # Check inputs
@@ -767,12 +767,7 @@ def evolution_strength_of_connection(A, B=None, epsilon=4.0, k=2,
                 counter = counter + 1
 
         # Choose tolerance for dropping "numerically zero" values later
-        t = Atilde.dtype.char
-        eps = np.finfo(np.float).eps
-        feps = np.finfo(np.single).eps
-        geps = np.finfo(np.longfloat).eps
-        _array_precision = {'f': 0, 'd': 1, 'g': 2, 'F': 0, 'D': 1, 'G': 2}
-        tol = {0: feps * 1e3, 1: eps * 1e6, 2: geps * 1e6}[_array_precision[t]]
+        tol = set_tol(Atilde.dtype)
 
         # Use constrained min problem to define strength
         amg_core.evolution_strength_helper(Atilde.data,
