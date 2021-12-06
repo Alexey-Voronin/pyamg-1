@@ -171,12 +171,17 @@ class multilevel_solver:
 
         total_nnz = sum(level.A.nnz for level in self.levels)
 
-        output += '  level   unknowns     nonzeros\n'
+        output += '  level   unknowns     nonzeros              CR\n'
         for n, level in enumerate(self.levels):
             A = level.A
-            output += '   %2d   %10d   %10d [%5.2f%%]\n' %\
+
+            # coarsening rate
+            CR = '    ' if n == 0 else '%2.2f' \
+                    % (self.levels[n-1].A.shape[0]/self.levels[n].A.shape[0])
+
+            output += '   %2d   %10d   %10d [%5.2f%%]   %s\n' %\
                 (n, A.shape[1], A.nnz,
-                 (100 * float(A.nnz) / float(total_nnz)))
+                 (100 * float(A.nnz) / float(total_nnz)), CR)
 
         return output
 
