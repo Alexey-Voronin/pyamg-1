@@ -230,9 +230,9 @@ def smoothed_aggregation_solver(A, AggMat=None, B=None, BH=None,
                     SparseEfficiencyWarning)
         except BaseException:
             raise TypeError('Argument A must have type csr_matrix or bsr_matrix, or be convertible to csr_matrix')
+        AggMat = AggMat.asfptype()
 
     A      = A.asfptype()
-    AggMat = AggMat.asfptype()
 
     if (symmetry != 'symmetric') and (symmetry != 'hermitian') and\
             (symmetry != 'nonsymmetric'):
@@ -282,7 +282,8 @@ def smoothed_aggregation_solver(A, AggMat=None, B=None, BH=None,
     levels = []
     levels.append(multilevel_solver.level())
     levels[-1].A      = A          # matrix
-    levels[-1].AggMat = AggMat     # matrix
+    if AggMat != None:
+        levels[-1].AggMat = AggMat     # matrix
 
     # Append near nullspace candidates
     levels[-1].B = B          # right candidates
@@ -440,10 +441,12 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
 
     levels.append(multilevel_solver.level())
     A      = R * A * P              # Galerkin operator
-    AggMat = R * AggMat * P
+
+    if getattr(levels[-2], 'AggMat', None) != None:
+        AggMat = R * AggMat * P
+        levels[-1].AggMat = AggMat
     A.symmetry = symmetry
     levels[-1].A = A
-    levels[-1].AggMat = AggMat
     levels[-1].B = B           # right near nullspace candidates
 
     if A.symmetry == "nonsymmetric":
