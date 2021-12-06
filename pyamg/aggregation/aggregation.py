@@ -24,7 +24,7 @@ from .smooth import jacobi_prolongation_smoother,\
 __all__ = ['smoothed_aggregation_solver']
 
 
-def smoothed_aggregation_solver(A, B=None, BH=None,
+def smoothed_aggregation_solver(A, AggMat=None, B=None, BH=None,
                                 symmetry='hermitian', strength='symmetric',
                                 aggregate='standard',
                                 smooth=('jacobi', {'omega': 4.0/3.0}),
@@ -45,6 +45,11 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
     ----------
     A : csr_matrix, bsr_matrix
         Sparse NxN matrix in CSR or BSR format
+
+    AggMat : None, csr_matrix, bsr_matrix
+        Sparse NxN matrix in CSR or BSR format, used for aggregation.
+        If not provided A is used for both aggregation and itnerpolation
+        smoothing.
 
     B : None, array_like
         Right near-nullspace candidates stored in the columns of an NxK array.
@@ -217,7 +222,17 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
         except BaseException:
             raise TypeError('Argument A must have type csr_matrix or bsr_matrix, or be convertible to csr_matrix')
 
-    A = A.asfptype()
+    if AggMat != None and \
+            not (isspmatrix_csr(AggMat) or isspmatrix_bsr(AggMat)):
+        try:
+            AggMat = csr_matrix(AggMat)
+            warn("Implicit conversion of AggMat to CSR", \
+                    SparseEfficiencyWarning)
+        except BaseException:
+            raise TypeError('Argument A must have type csr_matrix or bsr_matrix, or be convertible to csr_matrix')
+
+    A      = A.asfptype()
+    AggMat = AggMat.asfptype()
 
     if (symmetry != 'symmetric') and (symmetry != 'hermitian') and\
             (symmetry != 'nonsymmetric'):
@@ -266,7 +281,8 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
     # Construct multilevel structure
     levels = []
     levels.append(multilevel_solver.level())
-    levels[-1].A = A          # matrix
+    levels[-1].A      = A          # matrix
+    levels[-1].AggMat = AggMat     # matrix
 
     # Append near nullspace candidates
     levels[-1].B = B          # right candidates
@@ -302,8 +318,9 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         else:
             return v, {}
 
-    A = levels[-1].A
-    B = levels[-1].B
+    A      = levels[-1].A
+    AggMat = getattr(levels[-1], 'AggMat', A)
+    B      = levels[-1].B
     if A.symmetry == "nonsymmetric":
         AH = A.H.asformat(A.format)
         BH = levels[-1].BH
@@ -312,26 +329,26 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # C[i,j] denote stronger couplings between i and j.
     fn, kwargs = unpack_arg(strength[len(levels)-1])
     if fn == 'symmetric':
-        C = symmetric_strength_of_connection(A, **kwargs)
+        C = symmetric_strength_of_connection(AggMat, **kwargs)
     elif fn == 'classical':
-        C = classical_strength_of_connection(A, **kwargs)
+        C = classical_strength_of_connection(AggMat, **kwargs)
     elif fn == 'distance':
-        C = distance_strength_of_connection(A, **kwargs)
+        C = distance_strength_of_connection(AggMat, **kwargs)
     elif (fn == 'ode') or (fn == 'evolution'):
         if 'B' in kwargs:
-            C = evolution_strength_of_connection(A, **kwargs)
+            C = evolution_strength_of_connection(AggMat, **kwargs)
         else:
-            C = evolution_strength_of_connection(A, B, **kwargs)
+            C = evolution_strength_of_connection(AggMat, B, **kwargs)
     elif fn == 'energy_based':
-        C = energy_based_strength_of_connection(A, **kwargs)
+        C = energy_based_strength_of_connection(AggMat, **kwargs)
     elif fn == 'predefined':
         C = kwargs['C'].tocsr()
     elif fn == 'algebraic_distance':
-        C = algebraic_distance(A, **kwargs)
+        C = algebraic_distance(AggMat, **kwargs)
     elif fn == 'affinity':
-        C = affinity_distance(A, **kwargs)
+        C = affinity_distance(AggMat, **kwargs)
     elif fn is None:
-        C = A.tocsr()
+        C = AggMat.tocsr()
     else:
         raise ValueError('unrecognized strength of connection method: %s' %
                          str(fn))
@@ -339,7 +356,7 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # Avoid coarsening diagonally dominant rows
     flag, kwargs = unpack_arg(diagonal_dominance)
     if flag:
-        C = eliminate_diag_dom_nodes(A, C, **kwargs)
+        C = eliminate_diag_dom_nodes(AggMat, C, **kwargs)
 
     # Compute the aggregation matrix AggOp (i.e., the nodal coarsening of A).
     # AggOp is a boolean matrix, where the sparsity pattern for the k-th column
@@ -422,9 +439,11 @@ def extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     levels[-1].R = R  # restriction operator
 
     levels.append(multilevel_solver.level())
-    A = R * A * P              # Galerkin operator
+    A      = R * A * P              # Galerkin operator
+    AggMat = R * AggMat * P
     A.symmetry = symmetry
     levels[-1].A = A
+    levels[-1].AggMat = AggMat
     levels[-1].B = B           # right near nullspace candidates
 
     if A.symmetry == "nonsymmetric":
