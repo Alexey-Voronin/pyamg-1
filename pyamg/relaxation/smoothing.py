@@ -8,7 +8,19 @@ from pyamg.util.utils import scale_rows, get_block_diag, get_diagonal
 from pyamg.util.linalg import approximate_spectral_radius
 from pyamg.krylov import gmres, cgne, cgnr, cg
 
-__all__ = ['change_smoothers']
+__all__ = ['change_smoothers']+\
+          ['setup_'+f for f in ['gauss_seidel',
+                                'block_gauss_seidel',
+                                'jacobi',
+                                'block_jacobi',
+                                'richardson',
+                                'sor',
+                                'chebyshev',
+                                'gauss_seidel_nr',
+                                'gauss_seidel_ne',
+                                'jacobi_ne',
+                                ]
+            ]
 
 
 # Default relaxation parameters and list of by-definition
