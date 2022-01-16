@@ -1,23 +1,17 @@
 Release Steps:
-- with no staged commits...
-- check that `python setup.py test` passes
-- remove build, dist, .egg-info, etc `rm -rf build pyamg.egg-info var`
-- change `isreleased` to True in `setup.py`
-- change `version` in `setup.py`
-- git commit -a -m "version 3.2.0"
-- first github release:
-    - git tag -a v3.2.0 -m "version 3.2.0"
-    - git push
-    - git push --tags
-    - on github under release: draft new release (with the new tag): https://github.com/blog/1547-release-your-software
-    - release title: v3.2.0
-    - add summary of changes to the notes
-- now pypi:
-    - `git clean -xdf`
-    - `python3 setup.py sdist bdist_wheel`
-    - `twine upload --skip-existing dist/*` (no register needed)
-- change `isreleased` to False in `setup.py`
-- git commit -a -m "remove isreleased"
+- with no staged commits and a clean status...
+- meld a summary of `git log 7a74ef7..HEAD --oneline` with whatever hash with `[unreleased]` in changelog
+- commit, push
+- `mkvirtualenv releasetest`
+- check that `pip install .` and `python -c "import pyamg; pyamg.test()"` pass (outside source directory)
+- remove untracked files `git clean -xdf`
+- the following can be done with a pre-release, `v4.2.1-alpha.6`, for testing.  It will not become the default on pypi and `gh release create` can be marked with `--prerelease`
+- mark `fallback_version` in `pyproject.toml`
+- `git tag -a v3.2.0 -m "version 3.2.0"`
+- `git push`
+- `git push --tags`
+- then release the version on Github: `gh release create v1.2.3 --notes "see changelog.md"`
+  - This will trigger the GHA `.github/workflows/wheels.yml` which builds wheels and a source distribution, and publishes to pypi
 
 Testing notes:
 - do not use seeds such as 0, 1, 42, 100
