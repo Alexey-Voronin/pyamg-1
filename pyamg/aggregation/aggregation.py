@@ -34,13 +34,8 @@ def smoothed_aggregation_solver(A, AggMat=None, B=None, BH=None,
                                 improve_candidates=(('block_gauss_seidel',
                                                      {'sweep': 'symmetric',
                                                       'iterations': 4}),
-<<<<<<< HEAD
                                                     None],
                                 max_levels=10, max_coarse=10, min_coarse=10,
-=======
-                                                    None),
-                                max_levels=10, max_coarse=10,
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
                                 diagonal_dominance=False,
                                 keep=False, **kwargs):
     """Create a multilevel solver using classical-style Smoothed Aggregation (SA).
@@ -287,15 +282,10 @@ def smoothed_aggregation_solver(A, AggMat=None, B=None, BH=None,
 
     # Construct multilevel structure
     levels = []
-<<<<<<< HEAD
-    levels.append(multilevel_solver.level())
+    levels.append(MultilevelSolver.Level())
     levels[-1].A      = A          # matrix
     if AggMat != None:
         levels[-1].AggMat = AggMat     # matrix
-=======
-    levels.append(MultilevelSolver.Level())
-    levels[-1].A = A          # matrix
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
 
     # Append near nullspace candidates
     levels[-1].B = B          # right candidates
@@ -307,15 +297,11 @@ def smoothed_aggregation_solver(A, AggMat=None, B=None, BH=None,
         _extend_hierarchy(levels, strength, aggregate, smooth,
                           improve_candidates, diagonal_dominance, keep)
 
-<<<<<<< HEAD
     # dicard the coarsest level if smaller than min_coarse
     if min_coarse > levels[-1].A.shape[0]:
         levels = levels[:-1]
 
-    ml = multilevel_solver(levels, **kwargs)
-=======
     ml = MultilevelSolver(levels, **kwargs)
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
     change_smoothers(ml, presmoother, postsmoother)
     return ml
 
@@ -334,16 +320,10 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
             return v[0], v[1]
         return v, {}
 
-<<<<<<< HEAD
     A      = levels[-1].A
     AggMat = getattr(levels[-1], 'AggMat', A)
     B      = levels[-1].B
     if A.symmetry == "nonsymmetric":
-=======
-    A = levels[-1].A
-    B = levels[-1].B
-    if A.symmetry == 'nonsymmetric':
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
         AH = A.H.asformat(A.format)
         BH = levels[-1].BH
 
@@ -355,13 +335,8 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     elif fn == 'classical':
         C = classical_strength_of_connection(AggMat, **kwargs)
     elif fn == 'distance':
-<<<<<<< HEAD
         C = distance_strength_of_connection(AggMat, **kwargs)
-    elif (fn == 'ode') or (fn == 'evolution'):
-=======
-        C = distance_strength_of_connection(A, **kwargs)
     elif fn in ('ode', 'evolution'):
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
         if 'B' in kwargs:
             C = evolution_strength_of_connection(AggMat, **kwargs)
         else:
@@ -462,17 +437,13 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     levels[-1].P = P  # smoothed prolongator
     levels[-1].R = R  # restriction operator
 
-<<<<<<< HEAD
-    levels.append(multilevel_solver.level())
+    levels.append(MultilevelSolver.level())
     A      = R * A * P              # Galerkin operator
 
     if getattr(levels[-2], 'AggMat', None) != None:
         AggMat = R * AggMat * P
         levels[-1].AggMat = AggMat
-=======
-    levels.append(MultilevelSolver.Level())
-    A = R * A * P              # Galerkin operator
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
+
     A.symmetry = symmetry
     levels[-1].A = A
     levels[-1].B = B           # right near nullspace candidates

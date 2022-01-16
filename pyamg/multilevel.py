@@ -185,7 +185,6 @@ class MultilevelSolver:
 
         total_nnz = sum(level.A.nnz for level in self.levels)
 
-<<<<<<< HEAD
         output += '  level   unknowns     nonzeros              CR\n'
         for n, level in enumerate(self.levels):
             A = level.A
@@ -197,15 +196,6 @@ class MultilevelSolver:
             output += '   %2d   %10d   %10d [%5.2f%%]   %s\n' %\
                 (n, A.shape[1], A.nnz,
                  (100 * float(A.nnz) / float(total_nnz)), CR)
-=======
-        #          123456712345678901 123456789012 123456789
-        #               0       10000        49600 [52.88%]
-        output += '  level   unknowns     nonzeros\n'
-        for n, level in enumerate(self.levels):
-            A = level.A
-            ratio = 100 * A.nnz / total_nnz
-            output += f'{n:>6} {A.shape[1]:>11} {A.nnz:>12} [{ratio:2.2f}%]\n'
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
 
         return output
 

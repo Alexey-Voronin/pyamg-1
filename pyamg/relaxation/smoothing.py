@@ -33,7 +33,6 @@ from ..krylov import gmres, cgne, cgnr, cg
 
 from . import relaxation
 from .chebyshev import chebyshev_polynomial_coefficients
-<<<<<<< HEAD
 from pyamg.util.utils import scale_rows, get_block_diag, get_diagonal
 from pyamg.util.linalg import approximate_spectral_radius
 from pyamg.krylov import gmres, cgne, cgnr, cg
@@ -51,8 +50,6 @@ __all__ = ['change_smoothers']+\
                                 'jacobi_ne',
                                 ]
             ]
-=======
->>>>>>> e3fb6feaad2358e681f2f4affae3205bfe9a2350
 
 
 # Default relaxation parameters and list of by-definition
