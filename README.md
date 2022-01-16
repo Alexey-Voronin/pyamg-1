@@ -4,6 +4,7 @@
 # Installation
 PyAMG requires `numpy` and `scipy`
 
+
 ```
 pip install pyamg
 ```
