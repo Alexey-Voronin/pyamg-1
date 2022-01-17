@@ -175,8 +175,8 @@ class MultilevelSolver:
             if not hasattr(level, 'R'):
                 level.R = level.P.H
 
+    """
     def __repr__(self):
-        """Print basic statistics about the multigrid hierarchy."""
         output = 'MultilevelSolver\n'
         output += f'Number of Levels:     {len(self.levels)}\n'
         output += f'Operator Complexity: {self.operator_complexity():6.3f}\n'
@@ -194,6 +194,31 @@ class MultilevelSolver:
             output += f'{n:>6} {A.shape[1]:>11} {A.nnz:>12} [{ratio:2.2f}%]\n'
 
         return output
+    """
+
+    def __repr__(self):
+        """Print basic statistics about the multigrid hierarchy."""
+        output = 'MultilevelSolver\n'
+        output += f'Number of Levels:     {len(self.levels)}\n'
+        output += f'Operator Complexity: {self.operator_complexity():6.3f}\n'
+        output += f'Grid Complexity:     {self.grid_complexity():6.3f}\n'
+        output += f'Coarse Solver:        {self.coarse_solver.name()}\n'
+
+        total_nnz = sum(level.A.nnz for level in self.levels)
+
+        output += '  level   unknowns     nonzeros              CR\n'
+        for n, level in enumerate(self.levels):
+            A = level.A
+            ratio = 100 * A.nnz / total_nnz
+            # coarsening rate
+            cr = '    ' if n == 0 else '%2.2f' \
+                     % (self.levels[n-1].A.shape[0]/self.levels[n].A.shape[0])
+
+            output += f'{n:>6} {A.shape[1]:>11} {A.nnz:>12} [{ratio:2.2f}%]    [{cr:2.2f}%]\n'
+
+
+        return output
+
 
     def cycle_complexity(self, cycle='V'):
         """Cycle complexity of V, W, AMLI, and F(1,1) cycle with simple relaxation.

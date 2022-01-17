@@ -23,7 +23,8 @@ from .smooth import jacobi_prolongation_smoother,\
 from ..relaxation.utils import relaxation_as_linear_operator
 
 
-def smoothed_aggregation_solver(A, B=None, BH=None,
+def smoothed_aggregation_solver(A,
+                                B=None, BH=None,
                                 symmetry='hermitian', strength='symmetric',
                                 aggregate='standard',
                                 smooth=('jacobi', {'omega': 4.0/3.0}),
@@ -36,8 +37,11 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
                                                       'iterations': 4}),
                                                     None),
                                 max_levels=10, max_coarse=10,
+                                min_coarse=10,
                                 diagonal_dominance=False,
-                                keep=False, **kwargs):
+                                keep=False,
+                                AggMat=None,
+                                **kwargs):
     """Create a multilevel solver using classical-style Smoothed Aggregation (SA).
 
     Parameters
@@ -227,6 +231,18 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
     if A.shape[0] != A.shape[1]:
         raise ValueError('expected square matrix')
 
+    if AggMat != None and \
+            not (isspmatrix_csr(AggMat) or isspmatrix_bsr(AggMat)):
+        try:
+            AggMat = csr_matrix(AggMat)
+            warn("Implicit conversion of AggMat to CSR", \
+                     SparseEfficiencyWarning)
+        except BaseException:
+            raise TypeError('''Argument A must have type csr_matrix or
+                                bsr_matrix, or be convertible to
+                                csr_matrix''')
+        AggMat = AggMat.asfptype()
+
     # Right near nullspace candidates use constant for each variable as default
     if B is None:
         B = np.kron(np.ones((int(A.shape[0]/get_blocksize(A)), 1), dtype=A.dtype),
@@ -269,6 +285,8 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
     levels = []
     levels.append(MultilevelSolver.Level())
     levels[-1].A = A          # matrix
+    if AggMat != None:
+        levels[-1].AggMat = AggMat     # matrix
 
     # Append near nullspace candidates
     levels[-1].B = B          # right candidates
@@ -279,6 +297,10 @@ def smoothed_aggregation_solver(A, B=None, BH=None,
             int(levels[-1].A.shape[0]/get_blocksize(levels[-1].A)) > max_coarse:
         _extend_hierarchy(levels, strength, aggregate, smooth,
                           improve_candidates, diagonal_dominance, keep)
+
+    # dicard the coarsest level if smaller than min_coarse
+    if min_coarse > levels[-1].A.shape[0]:
+        levels = levels[:-1]
 
     ml = MultilevelSolver(levels, **kwargs)
     change_smoothers(ml, presmoother, postsmoother)
@@ -300,6 +322,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         return v, {}
 
     A = levels[-1].A
+    AggMat = getattr(levels[-1], 'AggMat', A)
     B = levels[-1].B
     if A.symmetry == 'nonsymmetric':
         AH = A.H.asformat(A.format)
@@ -309,33 +332,33 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # C[i,j] denote stronger couplings between i and j.
     fn, kwargs = unpack_arg(strength[len(levels)-1])
     if fn == 'symmetric':
-        C = symmetric_strength_of_connection(A, **kwargs)
+        C = symmetric_strength_of_connection(AggMat, **kwargs)
     elif fn == 'classical':
-        C = classical_strength_of_connection(A, **kwargs)
+        C = classical_strength_of_connection(AggMat, **kwargs)
     elif fn == 'distance':
-        C = distance_strength_of_connection(A, **kwargs)
+        C = distance_strength_of_connection(AggMat, **kwargs)
     elif fn in ('ode', 'evolution'):
         if 'B' in kwargs:
-            C = evolution_strength_of_connection(A, **kwargs)
+            C = evolution_strength_of_connection(AggMat, **kwargs)
         else:
-            C = evolution_strength_of_connection(A, B, **kwargs)
+            C = evolution_strength_of_connection(AggMat, B, **kwargs)
     elif fn == 'energy_based':
-        C = energy_based_strength_of_connection(A, **kwargs)
+        C = energy_based_strength_of_connection(AggMat, **kwargs)
     elif fn == 'predefined':
         C = kwargs['C'].tocsr()
     elif fn == 'algebraic_distance':
-        C = algebraic_distance(A, **kwargs)
+        C = algebraic_distance(AggMat, **kwargs)
     elif fn == 'affinity':
-        C = affinity_distance(A, **kwargs)
+        C = affinity_distance(AggMat, **kwargs)
     elif fn is None:
-        C = A.tocsr()
+        C = AggMat.tocsr()
     else:
         raise ValueError(f'Unrecognized strength of connection method: {str(fn)}')
 
     # Avoid coarsening diagonally dominant rows
     flag, kwargs = unpack_arg(diagonal_dominance)
     if flag:
-        C = eliminate_diag_dom_nodes(A, C, **kwargs)
+        C = eliminate_diag_dom_nodes(AggMat, C, **kwargs)
 
     # Compute the aggregation matrix AggOp (i.e., the nodal coarsening of A).
     # AggOp is a boolean matrix, where the sparsity pattern for the k-th column
@@ -416,6 +439,11 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     levels[-1].R = R  # restriction operator
 
     levels.append(MultilevelSolver.Level())
+
+    if getattr(levels[-2], 'AggMat', None) != None:
+        AggMat            = R * AggMat * P
+        levels[-1].AggMat = AggMat
+
     A = R * A * P              # Galerkin operator
     A.symmetry = symmetry
     levels[-1].A = A
