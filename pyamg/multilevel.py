@@ -211,10 +211,10 @@ class MultilevelSolver:
             A = level.A
             ratio = 100 * A.nnz / total_nnz
             # coarsening rate
-            cr = '    ' if n == 0 else '%2.2f' \
+            cr = '   ' if n == 0 else '%2.2f' \
                      % (self.levels[n-1].A.shape[0]/self.levels[n].A.shape[0])
 
-            output += f'{n:>6} {A.shape[1]:>11} {A.nnz:>12} [{ratio:2.2f}%]    [{cr:2.2f}%]\n'
+            output += f'{n:>6} {A.shape[1]:>11} {A.nnz:>12} [{ratio:2.2f}%]\t\t[{cr:>4}]\n'
 
 
         return output
