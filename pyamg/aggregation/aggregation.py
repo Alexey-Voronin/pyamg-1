@@ -5,6 +5,7 @@ from warnings import warn
 import numpy as np
 from scipy.sparse import csr_matrix, isspmatrix_csr, isspmatrix_bsr,\
     SparseEfficiencyWarning
+from time import time # for profiling
 
 from pyamg.multilevel import MultilevelSolver
 from pyamg.relaxation.smoothing import change_smoothers
@@ -304,6 +305,22 @@ def smoothed_aggregation_solver(A,
 
     ml = MultilevelSolver(levels, **kwargs)
     change_smoothers(ml, presmoother, postsmoother)
+
+
+    # add-up all the timings
+    lvl0 = ml.levels[0]
+    if hasattr(lvl0, 'timings_lvl'):
+        timings_hier = {}
+        timings_hier = dict.fromkeys(lvl0.timings_lvl.keys(), 0)
+
+        for lvl in ml.levels:
+            if not hasattr(lvl, 'timings_lvl'):
+                continue
+            for k, v in lvl.timings_lvl.items():
+                timings_hier[k] += v
+
+        lvl0.timings_hier = timings_hier
+
     return ml
 
 
@@ -330,6 +347,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
 
     # Compute the strength-of-connection matrix C, where larger
     # C[i,j] denote stronger couplings between i and j.
+    tic = time()
     fn, kwargs = unpack_arg(strength[len(levels)-1])
     if fn == 'symmetric':
         C = symmetric_strength_of_connection(AggMat, **kwargs)
@@ -354,6 +372,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         C = AggMat.tocsr()
     else:
         raise ValueError(f'Unrecognized strength of connection method: {str(fn)}')
+    strength_time =  time() - tic
 
     # Avoid coarsening diagonally dominant rows
     flag, kwargs = unpack_arg(diagonal_dominance)
@@ -363,6 +382,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     # Compute the aggregation matrix AggOp (i.e., the nodal coarsening of A).
     # AggOp is a boolean matrix, where the sparsity pattern for the k-th column
     # denotes the fine-grid nodes agglomerated into k-th coarse-grid node.
+    tic = time()
     fn, kwargs = unpack_arg(aggregate[len(levels)-1])
     if fn == 'standard':
         AggOp = standard_aggregation(C, **kwargs)[0]
@@ -374,7 +394,9 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         AggOp = kwargs['AggOp'].tocsr()
     else:
         raise ValueError(f'Unrecognized aggregation method {str(fn)}')
+    aggregation_time =  time() - tic
 
+    tic = time()
     # Improve near nullspace candidates by relaxing on A B = 0
     fn, kwargs = unpack_arg(improve_candidates[len(levels)-1])
     if fn is not None:
@@ -391,9 +413,11 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     T, B = fit_candidates(AggOp, B)
     if A.symmetry == 'nonsymmetric':
         TH, BH = fit_candidates(AggOp, BH)
+    misc_time =  time() - tic
 
     # Smooth the tentative prolongator, so that it's accuracy is greatly
     # improved for algebraically smooth error.
+    tic = time()
     fn, kwargs = unpack_arg(smooth[len(levels)-1])
     if fn == 'jacobi':
         P = jacobi_prolongation_smoother(A, T, C, B, **kwargs)
@@ -406,10 +430,12 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         P = T
     else:
         raise ValueError(f'Unrecognized prolongation smoother method {str(fn)}')
+    interp_smooth_time =  time() - tic
 
     # Compute the restriction matrix, R, which interpolates from the fine-grid
     # to the coarse-grid.  If A is nonsymmetric, then R must be constructed
     # based on A.H.  Otherwise R = P.H or P.T.
+    tic = time()
     symmetry = A.symmetry
     if symmetry == 'hermitian':
         R = P.H
@@ -429,6 +455,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
             R = T.H
         else:
             raise ValueError(f'Unrecognized prolongation smoother method {str(fn)}')
+    misc_time +=  time() - tic
 
     if keep:
         levels[-1].C = C  # strength of connection matrix
@@ -440,14 +467,22 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
 
     levels.append(MultilevelSolver.Level())
 
+    # Galerkin operator
+    tic = time()
     if getattr(levels[-2], 'AggMat', None) != None:
         AggMat            = R * AggMat * P
         levels[-1].AggMat = AggMat
+    A = R * A * P
+    misc_time +=  time() - tic
 
-    A = R * A * P              # Galerkin operator
     A.symmetry = symmetry
     levels[-1].A = A
     levels[-1].B = B           # right near nullspace candidates
+    levels[-2].timings_lvl  = { 'strength'      : strength_time,
+                                'aggregation'   : aggregation_time,
+                                'inter_smooth'  : interp_smooth_time,
+                                'misc'          : misc_time,
+                            }
 
     if A.symmetry == 'nonsymmetric':
         levels[-1].BH = BH     # left near nullspace candidates
