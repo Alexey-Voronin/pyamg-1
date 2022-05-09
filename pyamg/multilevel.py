@@ -220,6 +220,20 @@ class MultilevelSolver:
 
         return output
 
+    def to_dict(self):
+        mg_levels = self.levels
+        total_nnz = sum(level.A.nnz for level in mg_levels)
+        mg_info   = {'dofs': {}, 'nnz': {}, 'nnz(%)': {}, 'CR': {}}
+
+        for lvl, level in enumerate(mg_levels):
+            A = level.A
+            mg_info['dofs'  ][lvl] = A.shape[0]
+            mg_info['nnz'   ][lvl] = A.nnz
+            mg_info['nnz(%)'][lvl] = round(100 * A.nnz / total_nnz,2)
+            mg_info['CR'    ][lvl] = round(A.shape[0]/mg_levels[lvl+1].A.shape[0],2)\
+                                        if lvl < len(mg_levels)-1 else None
+
+        return  mg_info
 
     def cycle_complexity(self, cycle='V'):
         """Cycle complexity of V, W, AMLI, and F(1,1) cycle with simple relaxation.
