@@ -19,7 +19,7 @@ def _mysign(x):
 
 
 def fgmres(A, b, x0=None, tol=1e-5,
-           restrt=None, maxiter=None,
+           restrt=None, maxiter=None, eig_bounds=False,
            M=None, callback=None, residuals=None):
     """Flexible Generalized Minimum Residual Method (fGMRES).
 
@@ -184,6 +184,7 @@ def fgmres(A, b, x0=None, tol=1e-5,
         Q = np.zeros((4 * max_inner,), dtype=x.dtype)
         # upper Hessenberg matrix (made upper tri with Givens Rotations)
         H = np.zeros((max_inner, max_inner), dtype=x.dtype)
+        Hc= np.zeros((max_inner, max_inner), dtype=x.dtype)
         W = np.zeros((max_inner, n), dtype=x.dtype)  # Householder reflectors
         # For fGMRES, preconditioned vectors must be stored
         # No Horner-like scheme exists that allow us to avoid this
@@ -247,6 +248,7 @@ def fgmres(A, b, x0=None, tol=1e-5,
                     v[inner+1] = -alpha
                     v[inner+2:] = 0.0
 
+            Hc[:, inner] = v[0:max_inner]
             if inner > 0:
                 # Apply all previous Givens Rotations to v
                 amg_core.apply_givens(Q, v, n, inner)
@@ -303,7 +305,7 @@ def fgmres(A, b, x0=None, tol=1e-5,
         # y = lu_solve((H[0:(inner+1),0:(inner+1)], piv),
         #              g[0:(inner+1)], trans=0)
         y = sp.linalg.solve(H[0:(inner+1), 0:(inner+1)], g[0:(inner+1)])
-
+        #print('H.shape=', H[0:(inner+1), 0:(inner+1)].shape)
         # No Horner like scheme exists because the preconditioner can change
         # each iteration # Hence, we must store each preconditioned vector
         update = np.dot(Z[:, 0:inner+1], y)
@@ -332,4 +334,13 @@ def fgmres(A, b, x0=None, tol=1e-5,
 
     # end outer loop
 
-    return (postprocess(x), niter)
+    #print(Q.shape, Qblock.shape)
+    if eig_bounds:
+        #He   = Qblock@H[0:(inner+1), 0:(inner+1)]
+        He   = Hc[0:(inner+1), 0:(inner+1)]
+        #print(He.round(4))
+        eigs = np.sort(np.linalg.eigvals(He))
+        #print(np.sort(np.linalg.eigvals(Hc)))
+        return (postprocess(x), niter, eigs)
+    else:
+        return (postprocess(x), niter)
