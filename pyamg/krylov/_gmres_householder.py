@@ -19,7 +19,7 @@ def _mysign(x):
 
 
 def gmres_householder(A, b, x0=None, tol=1e-5,
-                      restrt=None, maxiter=None,
+                      restrt=None, maxiter=None, eig_bounds=False,
                       M=None, callback=None, residuals=None):
     """Generalized Minimum Residual Method (GMRES) based on Housholder.
 
@@ -169,7 +169,7 @@ def gmres_householder(A, b, x0=None, tol=1e-5,
     # cannot simply report niter = (outer-1)*max_outer + inner.  Numerical
     # error could cause the inner loop to halt while the actual ||r|| > tol.
     niter = 0
-
+    #print(f'max_outer={max_outer} max_inner={max_inner}')
     # Begin GMRES
     for _outer in range(max_outer):
 
@@ -307,7 +307,9 @@ def gmres_householder(A, b, x0=None, tol=1e-5,
         # y = lu_solve((H[0:(inner+1), 0:(inner+1)], piv), g[0:(inner+1)],
         #             trans=0)
         y = sp.linalg.solve(H[0:(inner+1), 0:(inner+1)], g[0:(inner+1)])
-
+        #print('max_inner=', max_inner)
+        #print('inner+1=', 1+inner)
+        #print(f'niter={niter}')
         # Use Horner like Scheme to map solution, y, back to original space.
         # Note that we do not use the last reflector.
         update = np.zeros(x.shape, dtype=x.dtype)
@@ -345,5 +347,9 @@ def gmres_householder(A, b, x0=None, tol=1e-5,
             return (postprocess(x), 0)
 
     # end outer loop
-
-    return (postprocess(x), niter)
+    if eig_bounds:
+        He   = H[0:(inner+1), 0:(inner+1)]
+        eigs = np.sort(np.linalg.eigvals(He))
+        return (postprocess(x), niter, eigs)
+    else:
+        return (postprocess(x), niter)

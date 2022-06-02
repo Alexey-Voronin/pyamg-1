@@ -4,7 +4,7 @@ from ._gmres_mgs import gmres_mgs
 from ._gmres_householder import gmres_householder
 
 
-def gmres(A, b, x0=None, tol=1e-5, restrt=None, maxiter=None,
+def gmres(A, b, x0=None, tol=1e-5, restrt=None, maxiter=None,eig_bounds=False,
           M=None, callback=None, residuals=None, orthog='householder',
           **kwargs):
     """Generalized Minimum Residual Method (GMRES).
@@ -98,13 +98,13 @@ def gmres(A, b, x0=None, tol=1e-5, restrt=None, maxiter=None,
     """
     # pass along **kwargs
     if orthog == 'householder':
-        (x, flag) = gmres_householder(A, b, x0=x0, tol=tol, restrt=restrt,
-                                      maxiter=maxiter, M=M,
+        out = gmres_householder(A, b, x0=x0, tol=tol, restrt=restrt,
+                                      maxiter=maxiter, M=M, eig_bounds=eig_bounds,
                                       callback=callback, residuals=residuals,
                                       **kwargs)
     elif orthog == 'mgs':
-        (x, flag) = gmres_mgs(A, b, x0=x0, tol=tol, restrt=restrt,
+        out = gmres_mgs(A, b, x0=x0, tol=tol, restrt=restrt,
                               maxiter=maxiter, M=M,
                               callback=callback, residuals=residuals, **kwargs)
 
-    return (x, flag)
+    return out
