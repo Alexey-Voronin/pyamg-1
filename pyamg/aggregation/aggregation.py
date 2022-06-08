@@ -22,6 +22,7 @@ from .smooth import jacobi_prolongation_smoother,\
 
 from ..relaxation.utils import relaxation_as_linear_operator
 
+from time import time
 
 def smoothed_aggregation_solver(A,
                                 B=None, BH=None,
@@ -302,8 +303,11 @@ def smoothed_aggregation_solver(A,
     if min_coarse > levels[-1].A.shape[0]:
         levels = levels[:-1]
 
-    ml = MultilevelSolver(levels, **kwargs)
-    change_smoothers(ml, presmoother, postsmoother)
+    if presmoother != None and postsmoother != None:
+        change_smoothers(ml, presmoother, postsmoother)
+        ml = MultilevelSolver(levels, coarse_solver=False)
+    else:
+        ml = MultilevelSolver(levels,  **kwargs)
     return ml
 
 
@@ -321,6 +325,8 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
             return v[0], v[1]
         return v, {}
 
+    tic = time()
+    levels[-1].timings = {}
     A = levels[-1].A
     agg_mat = getattr(levels[-1], 'agg_mat', A)
     B = levels[-1].B
@@ -354,15 +360,15 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         C = agg_mat.tocsr()
     else:
         raise ValueError(f'Unrecognized strength of connection method: {str(fn)}')
-
     # Avoid coarsening diagonally dominant rows
     flag, kwargs = unpack_arg(diagonal_dominance)
     if flag:
         C = eliminate_diag_dom_nodes(agg_mat, C, **kwargs)
-
+    levels[-1].timings['strength'] = time()-tic
     # Compute the aggregation matrix AggOp (i.e., the nodal coarsening of A).
     # AggOp is a boolean matrix, where the sparsity pattern for the k-th column
     # denotes the fine-grid nodes agglomerated into k-th coarse-grid node.
+    tic = time()
     fn, kwargs = unpack_arg(aggregate[len(levels)-1])
     if fn == 'standard':
         AggOp = standard_aggregation(C, **kwargs)[0]
@@ -374,8 +380,10 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         AggOp = kwargs['AggOp'].tocsr()
     else:
         raise ValueError(f'Unrecognized aggregation method {str(fn)}')
+    levels[-1].timings['agg'] = time()-tic
 
     # Improve near nullspace candidates by relaxing on A B = 0
+    tic = time()
     fn, kwargs = unpack_arg(improve_candidates[len(levels)-1])
     if fn is not None:
         b = np.zeros((A.shape[0], 1), dtype=A.dtype)
@@ -384,16 +392,20 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
         if A.symmetry == 'nonsymmetric':
             BH = relaxation_as_linear_operator((fn, kwargs), AH, b) * BH
             levels[-1].BH = BH
+    levels[-1].timings['AB=0'] = time()-tic
 
     # Compute the tentative prolongator, T, which is a tentative interpolation
     # matrix from the coarse-grid to the fine-grid.  T exactly interpolates
     # B_fine = T B_coarse.
+    tic = time()
     T, B = fit_candidates(AggOp, B)
     if A.symmetry == 'nonsymmetric':
         TH, BH = fit_candidates(AggOp, BH)
+    levels[-1].timings['B_f=TB_c'] = time()-tic
 
     # Smooth the tentative prolongator, so that it's accuracy is greatly
     # improved for algebraically smooth error.
+    tic = time()
     fn, kwargs = unpack_arg(smooth[len(levels)-1])
     if fn == 'jacobi':
         P = jacobi_prolongation_smoother(A, T, C, B, **kwargs)
@@ -429,6 +441,7 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
             R = T.H
         else:
             raise ValueError(f'Unrecognized prolongation smoother method {str(fn)}')
+    levels[-1].timings['smooth'] = time()-tic
 
     if keep:
         levels[-1].C = C  # strength of connection matrix
@@ -443,8 +456,9 @@ def _extend_hierarchy(levels, strength, aggregate, smooth, improve_candidates,
     if getattr(levels[-2], 'agg_mat', None) != None:
         agg_mat            = R * agg_mat * P
         levels[-1].agg_mat = agg_mat
-
+    tic = time()
     A = R * A * P              # Galerkin operator
+    levels[-2].timings['RAP'] = time()-tic
     A.symmetry = symmetry
     levels[-1].A = A
     levels[-1].B = B           # right near nullspace candidates

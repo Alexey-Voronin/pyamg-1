@@ -9,6 +9,7 @@ from ..util.linalg import norm
 from ..util import make_system
 from .. import amg_core
 
+from time import time
 
 def _mysign(x):
     """Return complex sign of x."""
@@ -20,7 +21,8 @@ def _mysign(x):
 
 def fgmres(A, b, x0=None, tol=1e-5,
            restrt=None, maxiter=None, eig_bounds=False,
-           M=None, callback=None, residuals=None):
+           M=None, callback=None, residuals=None,
+           return_time=False):
     """Flexible Generalized Minimum Residual Method (fGMRES).
 
     fGMRES iteratively refines the initial solution guess to the
@@ -108,6 +110,8 @@ def fgmres(A, b, x0=None, tol=1e-5,
        http://www-users.cs.umn.edu/~saad/books.html
 
     """
+    elapsed_time = 0.0
+    tic = time()
     # Convert inputs to linear system, with error checking
     A, M, x, b, postprocess = make_system(A, M, x0, b)
     n = A.shape[0]
@@ -289,10 +293,12 @@ def fgmres(A, b, x0=None, tol=1e-5,
                 if residuals is not None:
                     residuals.append(normr)
 
+                elapsed_time += time()-tic
                 if callback is not None:
                     y = sp.linalg.solve(H[0:(inner+1), 0:(inner+1)], g[0:(inner+1)])
                     update = np.dot(Z[:, 0:inner+1], y)
                     callback(x + update)
+                tic = time()
 
             niter += 1
 
@@ -312,10 +318,11 @@ def fgmres(A, b, x0=None, tol=1e-5,
         x = x + update
         r = b - A @ x
 
+        elapsed_time += time()-tic
         # Allow user access to the iterates
         if callback is not None:
             callback(x)
-
+        tic = time()
         normr = norm(r)
         if residuals is not None:
             residuals.append(normr)
@@ -326,11 +333,19 @@ def fgmres(A, b, x0=None, tol=1e-5,
             change = np.max(np.abs(update[indices] / x[indices]))
             if change < 1e-12:
                 # No change, halt
-                return (postprocess(x), -1)
+                if return_time:
+                    elapsed_time += time()-tic
+                    return (postprocess(x), -1, elapsed_time)
+                else:
+                    return (postprocess(x), -1)
 
         # test for convergence
         if normr < tol * normb:
-            return (postprocess(x), 0)
+            if return_time:
+                elapsed_time += time()-tic
+                return (postprocess(x), 0, elapsed_time)
+            else:
+                return (postprocess(x), 0)
 
     # end outer loop
 
@@ -343,4 +358,8 @@ def fgmres(A, b, x0=None, tol=1e-5,
         #print(np.sort(np.linalg.eigvals(Hc)))
         return (postprocess(x), niter, eigs)
     else:
-        return (postprocess(x), niter)
+        if return_time:
+            elapsed_time += time()-tic
+            return (postprocess(x), niter, elapsed_time)
+        else:
+            return (postprocess(x), niter)

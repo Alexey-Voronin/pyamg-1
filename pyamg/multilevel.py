@@ -170,7 +170,8 @@ class MultilevelSolver:
         self.symmetric_smoothing = False  # force change_smoothers to set to True
         self.levels = levels
 
-        self.coarse_solver = coarse_grid_solver(coarse_solver)
+        if coarse_solver:
+            self.coarse_solver = coarse_grid_solver(coarse_solver)
 
         for level in levels[:-1]:
             if not hasattr(level, 'R'):
