@@ -110,6 +110,11 @@ def fgmres(A, b, x0=None, tol=1e-5,
        http://www-users.cs.umn.edu/~saad/books.html
 
     """
+
+    timings = {'overall' : 0.0,
+               'Ax(t)' : 0.0, 'Mr(t)' : 0.0,
+               'Ax(c)' :   0, 'Mr(c)' : 0,
+              }
     elapsed_time = 0.0
     tic = time()
     # Convert inputs to linear system, with error checking
@@ -151,7 +156,10 @@ def fgmres(A, b, x0=None, tol=1e-5,
         return (postprocess(b/entry), 0)
 
     # Prep for method
+    tic2 = time()
     r = b - A @ x
+    timings['Ax(t)'] += time()-tic2
+    timings['Ax(c)'] += 1
 
     normr = norm(r)
     if residuals is not None:
@@ -211,7 +219,10 @@ def fgmres(A, b, x0=None, tol=1e-5,
             amg_core.apply_householders(v, np.ravel(W), n, inner-1, -1, -1)
 
             # Apply preconditioner
+            tic2 = time()
             v = M @ v
+            timings['Mr(t)'] += time()-tic2
+            timings['Mr(c)'] += 1
             # Check for nan, inf
             # if isnan(v).any() or isinf(v).any():
             #    warn('inf or nan after application of preconditioner')
@@ -219,7 +230,10 @@ def fgmres(A, b, x0=None, tol=1e-5,
             Z[:, inner] = v
 
             # Calculate new search direction
+            tic2 = time()
             v = A @ v
+            timings['Ax(t)'] += time()-tic2
+            timings['Ax(c)'] += 1
 
             # Factor in all Householder orthogonal reflections on new search
             # direction
@@ -293,7 +307,7 @@ def fgmres(A, b, x0=None, tol=1e-5,
                 if residuals is not None:
                     residuals.append(normr)
 
-                elapsed_time += time()-tic
+                timings['overall'] += time()-tic
                 if callback is not None:
                     y = sp.linalg.solve(H[0:(inner+1), 0:(inner+1)], g[0:(inner+1)])
                     update = np.dot(Z[:, 0:inner+1], y)
@@ -316,9 +330,12 @@ def fgmres(A, b, x0=None, tol=1e-5,
         # each iteration # Hence, we must store each preconditioned vector
         update = np.dot(Z[:, 0:inner+1], y)
         x = x + update
+        tic2 = time()
         r = b - A @ x
+        timings['Ax(t)'] += time()-tic2
+        timings['Ax(c)'] += 1
+        timings['overall'] += time()-tic
 
-        elapsed_time += time()-tic
         # Allow user access to the iterates
         if callback is not None:
             callback(x)
@@ -334,16 +351,16 @@ def fgmres(A, b, x0=None, tol=1e-5,
             if change < 1e-12:
                 # No change, halt
                 if return_time:
-                    elapsed_time += time()-tic
-                    return (postprocess(x), -1, elapsed_time)
+                    timings['overall'] += time()-tic
+                    return (postprocess(x), -1, timings)
                 else:
                     return (postprocess(x), -1)
 
         # test for convergence
         if normr < tol * normb:
             if return_time:
-                elapsed_time += time()-tic
-                return (postprocess(x), 0, elapsed_time)
+                timings['overall'] += time()-tic
+                return (postprocess(x), 0, timings)
             else:
                 return (postprocess(x), 0)
 
@@ -359,7 +376,7 @@ def fgmres(A, b, x0=None, tol=1e-5,
         return (postprocess(x), niter, eigs)
     else:
         if return_time:
-            elapsed_time += time()-tic
-            return (postprocess(x), niter, elapsed_time)
+            timings['overall'] += time()-tic
+            return (postprocess(x), niter, timings)
         else:
             return (postprocess(x), niter)
