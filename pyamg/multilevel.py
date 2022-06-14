@@ -586,11 +586,10 @@ class MultilevelSolver:
         """
 
         if not hasattr(self, 'timings'):
-            self.timings          = { 'overall' : np.zeros(len(self.levels)),
-                                      'rlx'     : np.zeros(len(self.levels)),
+            self.timings          = { 'rlx'     : np.zeros(len(self.levels)),
                                       'interp'  : np.zeros(len(self.levels)),
                                       'resid'   : np.zeros(len(self.levels)),
-                                      'cgs'     : 0.0}
+                                      }
 
         A = self.levels[lvl].A
         tic = time()
@@ -609,7 +608,7 @@ class MultilevelSolver:
         if lvl == len(self.levels) - 2:
             tic = time()
             coarse_x[:] = self.coarse_solver(self.levels[-1].A, coarse_b)
-            self.timings['cgs'] += time()-tic
+            self.timings['rlx'][-1] += time()-tic
         else:
             if cycle == 'V':
                 self.__solve(lvl + 1, coarse_x, coarse_b, 'V')
