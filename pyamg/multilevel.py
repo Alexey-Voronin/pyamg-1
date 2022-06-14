@@ -15,6 +15,8 @@ from .util.params import set_tol
 from .relaxation import smoothing
 from .util import upcast
 
+from time import time
+
 if parse_version(sp.__version__) >= parse_version('1.7'):
     from scipy.linalg import pinv           # pylint: disable=ungrouped-imports
 else:
@@ -376,7 +378,9 @@ class MultilevelSolver:
         def matvec(b):
             return self.solve(b, maxiter=1, cycle=cycle, tol=1e-12)
 
-        return LinearOperator(shape, matvec, dtype=dtype)
+        M = LinearOperator(shape, matvec, dtype=dtype)
+        #self.timings['solve'] = {'overall'}
+        return M
 
     def solve(self, b, x0=None, tol=1e-5, maxiter=100, cycle='V', accel=None,
               callback=None, residuals=None, return_info=False):
@@ -580,17 +584,32 @@ class MultilevelSolver:
             cycle = 'AMLI', AMLI-cycle
 
         """
+
+        if not hasattr(self, 'timings'):
+            self.timings          = { 'overall' : np.zeros(len(self.levels)),
+                                      'rlx'     : np.zeros(len(self.levels)),
+                                      'interp'  : np.zeros(len(self.levels)),
+                                      'resid'   : np.zeros(len(self.levels)),
+                                      'cgs'     : 0.0}
+
         A = self.levels[lvl].A
-
+        tic = time()
         self.levels[lvl].presmoother(A, x, b)
+        self.timings['rlx'][lvl] += time()-tic
 
+        tic = time()
         residual = b - A @ x
+        self.timings['resid'][lvl] += time()-tic
 
+        tic = time()
         coarse_b = self.levels[lvl].R * residual
         coarse_x = np.zeros_like(coarse_b)
+        self.timings['interp'][lvl] += time()-tic
 
         if lvl == len(self.levels) - 2:
+            tic = time()
             coarse_x[:] = self.coarse_solver(self.levels[-1].A, coarse_b)
+            self.timings['cgs'] += time()-tic
         else:
             if cycle == 'V':
                 self.__solve(lvl + 1, coarse_x, coarse_b, 'V')
@@ -632,10 +651,13 @@ class MultilevelSolver:
             else:
                 raise TypeError(f'Unrecognized cycle type ({cycle})')
 
+        tic = time()
         x += self.levels[lvl].P * coarse_x   # coarse grid correction
+        self.timings['interp'][lvl] += time()-tic
 
+        tic = time()
         self.levels[lvl].postsmoother(A, x, b)
-
+        self.timings['rlx'][lvl] += time()-tic
 
 def coarse_grid_solver(solver):
     """Return a coarse grid solver suitable for MultilevelSolver.
