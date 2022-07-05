@@ -304,10 +304,10 @@ def smoothed_aggregation_solver(A,
         levels = levels[:-1]
 
     if presmoother != None and postsmoother != None:
+        ml = MultilevelSolver(levels)
         change_smoothers(ml, presmoother, postsmoother)
-        ml = MultilevelSolver(levels, coarse_solver=False)
     else:
-        ml = MultilevelSolver(levels,  **kwargs)
+        ml = MultilevelSolver(levels,  **kwargs, coarse_solver=False)
     return ml
 
 
