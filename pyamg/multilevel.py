@@ -210,7 +210,7 @@ class MultilevelSolver:
 
         total_nnz = sum(level.A.nnz for level in self.levels)
 
-        output += '  level   unknowns     nonzeros              CR\n'
+        output += '  level   unknowns     nonzeros           CR\n'
         for n, level in enumerate(self.levels):
             A = level.A
             ratio = 100 * A.nnz / total_nnz
@@ -218,7 +218,7 @@ class MultilevelSolver:
             cr = '   ' if n == 0 else '%2.2f' \
                      % (self.levels[n-1].A.shape[0]/self.levels[n].A.shape[0])
 
-            output += f'{n:>6} {A.shape[1]:>11} {A.nnz:>12} [{ratio:2.2f}%]\t\t[{cr:>4}]\n'
+            output += f'{n:>6} {A.shape[1]:>11} {A.nnz:>12} [{ratio:5.2f}%] [{cr:>4}]\n'
 
 
         return output
