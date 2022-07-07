@@ -741,10 +741,18 @@ def coarse_grid_solver(solver):
                 Map = sp.sparse.eye(Acsc.shape[0], Acsc.shape[1], format='csc')
                 Map = Map[:, nonzero_cols]
                 Acsc = Map.T.tocsc() * Acsc * Map
-                self.LU = sp.sparse.linalg.splu(Acsc, **kwargs)
-                self.LU_Map = Map
+                try:
+                    self.LU = sp.sparse.linalg.splu(Acsc, **kwargs)
+                    self.LU_Map = Map
+                except:
+                    self.P = pinv(A.toarray(), **kwargs)
+                    print("\nWarning: MG coarse-grid solver has been reset from splu to LU (Factor is exactly singular..).")
+                    return np.dot(self.P, b)
 
-            return self.LU_Map * self.LU.solve(np.ravel(self.LU_Map.T * b))
+            if hasattr(self, 'LU_Map'):
+                return self.LU_Map * self.LU.solve(np.ravel(self.LU_Map.T * b))
+            else:
+                return np.dot(self.P, b)
 
     elif solver in ['bicg', 'bicgstab', 'cg', 'cgs', 'gmres', 'qmr', 'minres']:
         if hasattr(krylov, solver):
