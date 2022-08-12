@@ -38,7 +38,7 @@ def smoothed_aggregation_solver(A,
                                                       'iterations': 4}),
                                                     None),
                                 max_levels=10, max_coarse=10,
-                                min_coarse=10,
+                                min_coarse=50,
                                 diagonal_dominance=False,
                                 keep=False,
                                 agg_mat=None,
@@ -300,6 +300,7 @@ def smoothed_aggregation_solver(A,
                           improve_candidates, diagonal_dominance, keep)
 
     # dicard the coarsest level if smaller than min_coarse
+    print(min_coarse, levels[-1].A.shape[0])
     if min_coarse > levels[-1].A.shape[0]:
         levels = levels[:-1]
 
