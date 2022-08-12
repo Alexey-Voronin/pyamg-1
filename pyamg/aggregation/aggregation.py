@@ -299,8 +299,7 @@ def smoothed_aggregation_solver(A,
         _extend_hierarchy(levels, strength, aggregate, smooth,
                           improve_candidates, diagonal_dominance, keep)
 
-    # dicard the coarsest level if smaller than min_coarse
-    print(min_coarse, levels[-1].A.shape[0])
+    # discard the coarsest level if smaller than min_coarse
     if min_coarse > levels[-1].A.shape[0]:
         levels = levels[:-1]
 
