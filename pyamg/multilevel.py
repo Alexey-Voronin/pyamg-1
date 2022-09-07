@@ -564,7 +564,7 @@ class MultilevelSolver:
                     return x, it
                 return x
 
-    def __solve(self, lvl, x, b, cycle):
+    def __solve(self, lvl, x, b, cycle, eta_corr=None):
         """Multigrid cycling.
 
         Parameters
@@ -599,6 +599,11 @@ class MultilevelSolver:
         tic = time()
         residual = b - A @ x
         self.timings['resid'][lvl] += time()-tic
+
+        if eta_corr:
+            nv, eta = eta_corr
+            residual[:nv] *= eta[0]
+            residual[nv:] *= eta[1]
 
         tic = time()
         coarse_b = self.levels[lvl].R * residual
