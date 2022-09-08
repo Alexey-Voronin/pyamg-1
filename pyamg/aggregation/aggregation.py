@@ -300,6 +300,8 @@ def smoothed_aggregation_solver(A,
                           improve_candidates, diagonal_dominance, keep)
 
     # discard the coarsest level if smaller than min_coarse
+    #while (min_coarse > levels[-1].A.shape[0] and len(levels) > 1):
+    #if (min_coarse > levels[-1].A.shape[0] and len(levels) > 1):
     if min_coarse > levels[-1].A.shape[0]:
         levels = levels[:-1]
 
