@@ -37,8 +37,8 @@ def smoothed_aggregation_solver(A,
                                                      {'sweep': 'symmetric',
                                                       'iterations': 4}),
                                                     None),
-                                max_levels=10, max_coarse=10,
-                                min_coarse=18,
+                                max_levels=30, max_coarse=100,
+                                min_coarse=30,
                                 diagonal_dominance=False,
                                 keep=False,
                                 agg_mat=None,
@@ -301,7 +301,8 @@ def smoothed_aggregation_solver(A,
 
     # discard the coarsest level if smaller than min_coarse
     if min_coarse > levels[-1].A.shape[0]:
-        levels = levels[:-1]
+        if len(levels) > 2: # and levels[-2].A.shape[0] < 900:
+            levels = levels[:-1]
 
     if presmoother != None and postsmoother != None:
         ml = MultilevelSolver(levels)
