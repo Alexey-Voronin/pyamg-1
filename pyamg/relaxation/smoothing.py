@@ -40,7 +40,7 @@ from .chebyshev import chebyshev_polynomial_coefficients
 DEFAULT_SWEEP = 'forward'
 DEFAULT_NITER = 1
 SYMMETRIC_RELAXATION = ['jacobi', 'richardson', 'block_jacobi',
-                        'jacobi_ne', 'chebyshev', None]
+                        'jacobi_ne', 'chebyshev', 'jacobi_krylov', None]
 
 
 def _unpack_arg(v):
@@ -457,6 +457,32 @@ def setup_jacobi(lvl, iterations=DEFAULT_NITER, omega=1.0, withrho=True):
         relaxation.jacobi(A, x, b, iterations=iterations, omega=omega)
     return smoother
 
+def setup_jacobi_krylov(lvl, iterations=DEFAULT_NITER, omega=1.0, withrho=True):
+    """Set up weighted-Jacobi."""
+    if withrho:
+        omega = omega/rho_D_inv_A(lvl.A)
+
+    def smoother(A, x, b):
+        import scipy.sparse as sp
+        from scipy.sparse.linalg import LinearOperator
+        def mv(r):
+            dx = np.zeros_like(r)
+            relaxation.jacobi(A, dx, r, iterations=1, omega=omega)
+
+            return dx
+        M = sp.linalg.LinearOperator(A.shape, matvec=mv)
+
+        from pyamg.krylov import fgmres
+        #relaxation.jacobi(A, x, b, iterations=1, omega=omega)
+        x[:] = fgmres(A, b, x0=x,
+                            tol=1e-20,
+                            maxiter=1,  # = max_outer
+                            restrt=iterations,  # = max_inner
+                            M=M)[0]
+
+    return smoother
+
+
 
 def setup_schwarz(lvl, iterations=DEFAULT_NITER, subdomain=None,
                   subdomain_ptr=None, inv_subblock=None, inv_subblock_ptr=None,
@@ -698,6 +724,7 @@ def _setup_call(fn):
     setup_register = {
         'gauss_seidel':           setup_gauss_seidel,
         'jacobi':                 setup_jacobi,
+        'jacobi_krylov':          setup_jacobi_krylov,
         'schwarz':                setup_schwarz,
         'strength_based_schwarz': setup_strength_based_schwarz,
         'block_jacobi':           setup_block_jacobi,
