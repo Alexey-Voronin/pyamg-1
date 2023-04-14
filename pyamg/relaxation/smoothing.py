@@ -457,6 +457,7 @@ def setup_jacobi(lvl, iterations=DEFAULT_NITER, omega=1.0, withrho=True):
         relaxation.jacobi(A, x, b, iterations=iterations, omega=omega)
     return smoother
 
+# TODO: generalize
 def setup_jacobi_krylov(lvl, iterations=DEFAULT_NITER, omega=1.0, withrho=True):
     """Set up weighted-Jacobi."""
     if withrho:
