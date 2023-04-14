@@ -42,10 +42,13 @@ DEFAULT_NITER = 1
 
 # List of by-definition symmetric relaxation schemes, e.g. Jacobi.
 SYMMETRIC_RELAXATION = ['jacobi', 'richardson', 'block_jacobi',
-                        'jacobi_ne', 'chebyshev', None]
+                        'jacobi_ne', 'chebyshev',
+                        'gmres_smoother',
+                        None]
 
 # List of supported Krylov relaxation schemes
-KRYLOV_RELAXATION = ['cg', 'cgne', 'cgnr', 'gmres']
+KRYLOV_RELAXATION = ['cg', 'cgne', 'cgnr', 'gmres',
+                     'gmres_smoother']
 
 
 def _unpack_arg(v):
@@ -788,6 +791,33 @@ def setup_fc_block_jacobi(lvl, f_iterations=DEFAULT_NITER, c_iterations=DEFAULT_
     update_wrapper(smoother, relaxation.fc_block_jacobi)  # set __name__
     return smoother
 
+from scipy.sparse.linalg import LinearOperator
+def setup_gmres_smoother(lvl,
+                          tol=1e-16,
+                          iterations=2,
+                          restrt=None,
+                          preconditioner=None,
+                          callback=None,
+                          residuals=None):
+    """Set up Smoother wrapped in GMRES iteration."""
+
+    # setup-preconditioners
+    fn1, kwargs1 = _unpack_arg(preconditioner)
+    setup_preconditioner = _setup_call(fn1)
+    relax = setup_preconditioner(lvl, **kwargs1)
+    # assemble linear operator
+    def matvec(b):
+        x = np.zeros_like(b)
+        relax(lvl.A, x, b)
+        return x
+    M = LinearOperator(lvl.A.shape, matvec=matvec)
+
+    fn0 = _setup_call('gmres')
+    smoother = fn0(lvl, tol=tol, maxiter=iterations, restrt=restrt,
+                   M=M, callback=callback, residuals=residuals)
+
+    update_wrapper(smoother, gmres)  # set __name__
+    return smoother
 
 def setup_gmres(lvl, tol=1e-12, maxiter=DEFAULT_NITER, restrt=None, M=None, callback=None,
                 residuals=None):
@@ -862,6 +892,7 @@ def _setup_call(fn):
         'cgne':                   setup_cgne,
         'cgnr':                   setup_cgnr,
         'none':                   setup_none,
+        'gmres_smoother':  setup_gmres_smoother
     }
 
     if fn is None:
