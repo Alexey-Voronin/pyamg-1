@@ -20,7 +20,7 @@ from time import time
 if parse_version(sp.__version__) >= parse_version('1.7'):
     from scipy.linalg import pinv           # pylint: disable=ungrouped-imports
 else:
-    from scipy.linalg import pinv2 as pinv  # pylint: disable=ungrouped-imports
+    from scipy.linalg import pinv2 as pinv  # pylint: disable=no-name-in-module
 
 
 class MultilevelSolver:
@@ -52,7 +52,12 @@ class MultilevelSolver:
         A measure of the size of the multigrid hierarchy.
     solve()
         Iteratively solves a linear system for the right hand side.
-
+    change_solve_matrix(A)
+        Change matrix solve/preconditioning matrix.
+        This also changes the corresponding relaxation routines on the fine
+        grid.  This can be used, for example, to precondition a
+        quadratic finite element discretization with AMG built from
+        a linear discretization on quadratic quadrature points.
     """
 
     class Level:
@@ -183,8 +188,8 @@ class MultilevelSolver:
     def __repr__(self):
         output = 'MultilevelSolver\n'
         output += f'Number of Levels:     {len(self.levels)}\n'
-        output += f'Operator Complexity: {self.operator_complexity():6.3f}\n'
-        output += f'Grid Complexity:     {self.grid_complexity():6.3f}\n'
+        output += f'Operator Complexity:  {self.operator_complexity():6.3f}\n'
+        output += f'Grid Complexity:      {self.grid_complexity():6.3f}\n'
         output += f'Coarse Solver:        {self.coarse_solver.name()}\n'
 
         total_nnz = sum(level.A.nnz for level in self.levels)
@@ -335,8 +340,26 @@ class MultilevelSolver:
         return sum(level.A.shape[0] for level in self.levels) /\
             float(self.levels[0].A.shape[0])
 
+    def change_solve_matrix(self, A):
+        """Change matrix solve/preconditioning matrix.
+
+        Parameters
+        ----------
+        A : csr_matrix
+            Target solution matrix
+
+        Notes
+        -----
+        This also changes the corresponding relaxation routines on the fine
+        grid.  This can be used, for example, to precondition a
+        quadratic finite element discretization with linears.
+        """
+        self.levels[0].A = A
+
+        smoothing.rebuild_smoother(self.levels[0])
+
     def psolve(self, b):
-        """Lagacy solve interface."""
+        """Legacy solve interface."""
         return self.solve(b, maxiter=1)
 
     def aspreconditioner(self, cycle='V'):
@@ -383,7 +406,7 @@ class MultilevelSolver:
         return M
 
     def solve(self, b, x0=None, tol=1e-5, maxiter=100, cycle='V', accel=None,
-              callback=None, residuals=None, return_info=False):
+              callback=None, residuals=None, cycles_per_level=1, return_info=False):
         """Execute multigrid cycling.
 
         Parameters
@@ -413,6 +436,8 @@ class MultilevelSolver:
             will be the residuals from the Krylov iteration -- see the `accel`
             method to see verify whether this ||r|| or ||Mr|| (as in the case of
             GMRES).
+        cycles_per_level: int, default 1
+            Number of V-cycles on each level of an F-cycle
         return_info : bool
             If true, will return (x, info)
             If false, will return x (default)
@@ -543,7 +568,7 @@ class MultilevelSolver:
                 # hierarchy has only 1 level
                 x = self.coarse_solver(A, b)
             else:
-                self.__solve(0, x, b, cycle)
+                self.__solve(0, x, b, cycle, cycles_per_level)
 
             it += 1
 
@@ -564,7 +589,7 @@ class MultilevelSolver:
                     return x, it
                 return x
 
-    def __solve(self, lvl, x, b, cycle, eta_corr=None):
+    def __solve(self, lvl, x, b, cycle, cycles_per_level=1, eta_corr=None):
         """Multigrid cycling.
 
         Parameters
@@ -582,7 +607,8 @@ class MultilevelSolver:
             cycle = 'W',    W-cycle
             cycle = 'F',    F-cycle
             cycle = 'AMLI', AMLI-cycle
-
+        cycles_per_level : int, default 1
+            Number of V-cycles on each level of an F-cycle
         """
 
         if not hasattr(self, 'timings'):
@@ -621,8 +647,9 @@ class MultilevelSolver:
                 self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
                 self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
             elif cycle == 'F':
-                self.__solve(lvl + 1, coarse_x, coarse_b, cycle)
-                self.__solve(lvl + 1, coarse_x, coarse_b, 'V')
+                self.__solve(lvl + 1, coarse_x, coarse_b, cycle, cycles_per_level)
+                for _ in range(0, cycles_per_level):
+                    self.__solve(lvl + 1, coarse_x, coarse_b, 'V', 1)
             elif cycle == 'AMLI':
                 # Run nAMLI AMLI cycles, which compute "optimal" corrections by
                 # orthogonalizing the coarse-grid corrections in the A-norm
@@ -837,7 +864,11 @@ def coarse_grid_solver(solver):
 
 
 class multilevel_solver(MultilevelSolver):  # noqa: N801
-    """Deprecated level class."""
+    """Deprecated level class.
+
+    .. deprecated:: 4.2.3
+              Use :class:`MultilevelSolver` instead.
+    """
 
     def __init__(self, *args, **kwargs):
         """Raise deprecation warning on use, not import."""

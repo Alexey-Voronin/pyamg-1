@@ -338,7 +338,7 @@ def symmetric_rescaling(A, copy=True):
             raise ValueError('expected square matrix')
 
         D = diag_sparse(A)
-        mask = (D != 0)
+        mask = D != 0
 
         if A.dtype != complex:
             D_sqrt = np.sqrt(abs(D))
@@ -583,7 +583,7 @@ def get_diagonal(A, norm_eq=False, inv=False):
 
     if inv:
         Dinv = np.zeros_like(D)
-        mask = (D != 0.0)
+        mask = D != 0.0
         Dinv[mask] = 1.0 / D[mask]
         return Dinv
 
@@ -662,7 +662,7 @@ def get_block_diag(A, blocksize, inv_flag=True):
     shape = (int(A.shape[0]/blocksize), int(A.shape[0]/blocksize))
     diag_entries = csr_matrix(AAIJ, shape=shape).diagonal()
     diag_entries -= 1
-    nonzero_mask = (diag_entries != -1)
+    nonzero_mask = diag_entries != -1
     diag_entries = diag_entries[nonzero_mask]
     if diag_entries.shape != (0,):
         block_diag[nonzero_mask, :, :] = A.data[diag_entries, :, :]
@@ -1044,9 +1044,7 @@ def coord_to_rbm(nnodes, ndof, x, y, z):
                          'spatial location,i.e. ndof = [1 | 3 | 6]. '
                          f'You have entered {ndof}.')
 
-    if((max(x.shape) != nnodes)
-       or (max(y.shape) != nnodes)
-       or (max(z.shape) != nnodes)):
+    if (max(x.shape) != nnodes) or (max(y.shape) != nnodes) or (max(z.shape) != nnodes):
         raise ValueError('coord_to_rbm(...) requires coordinate vectors of equal '
                          f'length.  Length must be nnodes = {nnodes}')
 
@@ -1674,7 +1672,7 @@ def eliminate_diag_dom_nodes(A, C, theta=1.02):
         diag_dom_rows = np.array(diag_dom_rows, dtype=int)
         diag_dom_rows = diag_dom_rows.reshape(-1, bsize)
         diag_dom_rows = np.sum(diag_dom_rows, axis=1)
-        diag_dom_rows = (diag_dom_rows == bsize)
+        diag_dom_rows = diag_dom_rows == bsize
 
     # Replace these rows/cols in # C with rows/cols of the identity.
     Id = eye(C.shape[0], C.shape[1], format='csr')
@@ -2000,7 +1998,7 @@ def filter_matrix_columns(A, theta):
     return A_filter
 
 
-def filter_matrix_rows(A, theta):
+def filter_matrix_rows(A, theta, diagonal=False, lump=False):
     """Filter each row of A with tol.
 
     i.e., drop all entries in row k where
@@ -2012,12 +2010,19 @@ def filter_matrix_rows(A, theta):
 
     theta : float
         In range [0,1) and defines drop-tolerance used to filter the row of A
+    diagonal : bool
+        If True, filter by diagonal entry. Otherwise, filter by maximum absolute
+        value in row.  This is in place.
+    lump : bool
+        If True, instead of removing entries, lump them to diagonal. Preserves
+        row sum of matrix.
 
     Returns
     -------
     A_filter : sparse_matrix
         Each row has been filtered by dropping all entries where
         abs(A[i,k]) < tol max( abs(A[:,k]) )
+        If `diagonal == True`, then no return (None).
 
     Examples
     --------
@@ -2044,13 +2049,23 @@ def filter_matrix_rows(A, theta):
     if (theta < 0) or (theta >= 1.0):
         raise ValueError('theta must be in [0,1)')
 
+    # Filter by diagonal entry, A_ij = 0 if |A_ij| < theta*|A_ii|
+    if diagonal:
+        amg_core.filter_matrix_rows(A.shape[0], theta, A.indptr,
+                                    A.indices, A.data, lump)
+        A.eliminate_zeros()
+        if Aformat == 'bsr':
+            A = A.tobsr(blocksize=blocksize)
+        return None  # inplace
+
     # Apply drop-tolerance to each row of A.  We apply the drop-tolerance with
-    # amg_core.classical_strength_of_connection(), which ignores diagonal
+    # amg_core.classical_strength_of_connection_abs(), which ignores diagonal
     # entries, thus necessitating the trick where we add A.shape[0] to each of
     # the row indices
     A_filter = A.copy()
     A.indices += A.shape[0]
     A_filter.indices += A.shape[0]
+
     # classical_strength_of_connection takes an absolute value internally
     amg_core.classical_strength_of_connection_abs(A.shape[0],
                                                   theta,
@@ -2127,28 +2142,52 @@ def truncate_rows(A, nz_per_row):
     return A
 
 
-# from functools import partial, update_wrapper
-# def dispatcher(name_to_handle):
-#    def dispatcher(arg):
-#        if isinstance(arg,tuple):
-#            fn,opts = arg[0],arg[1]
-#        else:
-#            fn,opts = arg,{}
-#
-#        if fn in name_to_handle:
-#            # convert string into function handle
-#            fn = name_to_handle[fn]
-#        #elif isinstance(fn, type(numpy.ones)):
-#        #    pass
-#        elif callable(fn):
-#            # if fn is itself a function handle
-#            pass
-#        else:
-#            raise TypeError('Expected function')
-#
-#        wrapped = partial(fn, **opts)
-#        update_wrapper(wrapped, fn)
-#
-#        return wrapped
-#
-#    return dispatcher
+def scale_block_inverse(A, blocksize):
+    """Get inverse of block diagonal of A and scale A, A = D^{-1}A.
+
+    Parameters
+    ----------
+    A : csr or bsr_matrix
+        Matrix to scale by block inverse.
+    blocksize : int
+        Blocksize of matrix.
+
+    Returns
+    -------
+    tuple, (D^{-1}*A, D^{-1})
+
+    Notes
+    -----
+    This is not a symmetric scaling.
+
+    Examples
+    --------
+    >>> from pyamg.gallery import poisson
+    >>> from pyamg.util.utils import scale_block_inverse
+    >>> A = poisson((4,), format='csr')
+    >>> A, Dinv = scale_block_inverse(A, 2)
+    >>> A.toarray()
+    array([[ 1.        ,  0.        , -0.33333333,  0.        ],
+           [ 0.        ,  1.        , -0.66666667,  0.        ],
+           [ 0.        , -0.66666667,  1.        ,  0.        ],
+           [ 0.        , -0.33333333,  0.        ,  1.        ]])
+    """
+    if not isspmatrix(A):
+        raise TypeError('Expected sparse matrix')
+    if A.shape[0] != A.shape[1]:
+        raise ValueError('Expected square matrix')
+    if np.mod(A.shape[0], blocksize) != 0:
+        raise ValueError('blocksize and A.shape must be compatible')
+
+    # Convert to BSR
+    if not isspmatrix_bsr(A):
+        A = bsr_matrix(A, blocksize=(blocksize, blocksize))
+    if A.blocksize != (blocksize, blocksize):
+        A = A.tobsr(blocksize=(blocksize, blocksize))
+
+    # Get block diagonal inverse
+    N_block = A.shape[0] / blocksize
+    Dinv = get_block_diag(A=A, blocksize=blocksize, inv_flag=True)
+    scale = bsr_matrix((Dinv, np.arange(0, N_block), np.arange(0, N_block+1)),
+                       blocksize=[blocksize, blocksize], shape=A.shape)
+    return scale * A, scale

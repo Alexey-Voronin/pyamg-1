@@ -1,6 +1,9 @@
 name: Build wheels
 
 on:
+  workflow_dispatch:
+    branches:
+      - main
   release:
     types:
       - published
@@ -16,22 +19,24 @@ jobs:
 
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          # uncomment to force a wheel build
+          # ref: v4.2.3
+          fetch-depth: 1
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v2.2.2
+        uses: pypa/cibuildwheel@v2.12.1
         env:
-          CIBW_BUILD: "cp37-* cp38-* cp39-* cp310-*"
+          CIBW_BUILD: "cp37-* cp38-* cp39-* cp310-* cp311-*"
           CIBW_SKIP: pp*
-          CIBW_ARCHS_MACOS: "x86_64 arm64"
+          CIBW_ARCHS_MACOS: "x86_64 arm64 universal2"
           CIBW_ARCHS_WINDOWS: "AMD64 x86"
           CIBW_ARCHS_LINUX: "x86_64"
           CIBW_BUILD_VERBOSITY: 2
 
       - name: Save wheels
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: ./wheelhouse/*.whl
 
@@ -40,9 +45,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Install pypa/build
         run: pip install 'build[virtualenv]'
@@ -51,7 +56,7 @@ jobs:
         run: python -m build --sdist
 
       - name: Save sdist
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           path: dist/*.tar.gz
 
@@ -60,12 +65,12 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'release' && github.event.action == 'published'
     steps:
-    - uses: actions/download-artifact@v2
+    - uses: actions/download-artifact@v3
       with:
         name: artifact
         path: dist
 
-    - uses: pypa/gh-action-pypi-publish@v1.4.2
+    - uses: pypa/gh-action-pypi-publish@v1.8.5
       with:
         user: __token__
         password: ${{ secrets.pypi_token }}
